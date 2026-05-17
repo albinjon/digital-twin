@@ -2,7 +2,12 @@
 # Install Albin's agent setup into ~/.claude/:
 #   - be-albin skill        (loads engineering SOUL; bundled with SOUL.md)
 #   - look-for-work skill   (candidate-finder, SOUL-aware downstream consumers)
-#   - maybe-do-work skill   (autonomous executor; chains the other two + /notify)
+#   - maybe-do-work skill   (autonomous executor; chains look-for-work + be-albin + notify)
+#   - refine skill          (Linear backlog refinement; routes to Todo or Intervention)
+#   - router skill          (Linear ticket state reconciliation)
+#   - implement skill       (Linear Todo -> branch + non-draft PR + In Progress)
+#   - review skill          (devil's-advocate PR review on In Progress tickets)
+#   - fixer skill           (Review Fixes -> coherent fix pass on existing PR -> In Progress)
 #   - CLAUDE.md auto-load pointer so Claude Code sessions pick it all up
 #
 # Idempotent — safe to re-run. After the first run, ~/.claude/skills/<each>/
@@ -92,6 +97,27 @@ install_skill "maybe-do-work" \
     "maybe-do-work v1: autonomous executor chaining /look-for-work + /be-albin + /notify" \
     "maybe-do-work-skill.md:SKILL.md"
 
+# Linear ticket lifecycle automations (invoked explicitly from workflows)
+install_skill "refine" \
+    "refine v1: Linear backlog refinement (clarify, deduplicate, label, route to Todo or Intervention)" \
+    "refine-skill.md:SKILL.md"
+
+install_skill "router" \
+    "router v1: reconcile a Linear ticket's workflow state (Backlog/Todo/Review Fixes/Intervention/Done)" \
+    "router-skill.md:SKILL.md"
+
+install_skill "implement" \
+    "implement v1: Linear Todo -> branch + non-draft PR + In Progress (with hierarchy/readiness checks)" \
+    "implement-skill.md:SKILL.md"
+
+install_skill "review" \
+    "review v1: devil's-advocate PR review for In Progress tickets; routes to Review Fixes / Human / Intervention" \
+    "review-skill.md:SKILL.md"
+
+install_skill "fixer" \
+    "fixer v1: implement PR feedback in one coherent pass on the existing branch; back to In Progress" \
+    "fixer-skill.md:SKILL.md"
+
 # --- 4. Append the auto-load pointer to ~/.claude/CLAUDE.md (idempotent) ---
 echo ""
 echo "==> CLAUDE.md pointer"
@@ -128,11 +154,19 @@ fi
 
 echo ""
 echo "Done. Wiring:"
-echo "  - be-albin           $SKILLS_ROOT/be-albin/        (skill + bundled SOUL, git'd)"
-echo "  - look-for-work      $SKILLS_ROOT/look-for-work/   (skill, git'd)"
-echo "  - maybe-do-work      $SKILLS_ROOT/maybe-do-work/   (skill, git'd)"
-echo "  - Auto-load (Code)   $CLAUDE_MD"
-echo "  - Auto-load (Cowork) memory files (in place)"
+echo "  Identity + autonomous loop:"
+echo "    - be-albin         $SKILLS_ROOT/be-albin/        (skill + bundled SOUL, git'd)"
+echo "    - look-for-work    $SKILLS_ROOT/look-for-work/   (skill, git'd)"
+echo "    - maybe-do-work    $SKILLS_ROOT/maybe-do-work/   (skill, git'd)"
+echo "  Linear ticket lifecycle:"
+echo "    - refine           $SKILLS_ROOT/refine/          (skill, git'd)"
+echo "    - router           $SKILLS_ROOT/router/          (skill, git'd)"
+echo "    - implement        $SKILLS_ROOT/implement/       (skill, git'd)"
+echo "    - review           $SKILLS_ROOT/review/          (skill, git'd)"
+echo "    - fixer            $SKILLS_ROOT/fixer/           (skill, git'd)"
+echo "  Auto-load:"
+echo "    - Code             $CLAUDE_MD"
+echo "    - Cowork           memory files (in place)"
 echo ""
 echo "Staging files in $STAGING/ are no longer canonical — delete the folder"
 echo "or keep it as a Cowork working area, your call."
@@ -142,9 +176,16 @@ echo "  1. 'what should I do now?'         -> SOUL consults /look-for-work, reco
 echo "  2. 'find me something to do'       -> /look-for-work directly, candidate list"
 echo "  3. 'go pick something and do it'   -> /maybe-do-work, autonomous loop"
 echo ""
-echo "For (3), SOUL's hard limits bound the risk:"
+echo "Linear lifecycle skills (invoke explicitly from a workflow):"
+echo "  - /refine <issue>     fresh backlog ticket -> Todo or Intervention"
+echo "  - /router <issue>     reconcile current state -> right workflow stage"
+echo "  - /implement <issue>  Todo -> branch + non-draft PR + In Progress"
+echo "  - /review <issue>     In Progress PR -> Review Fixes / Human / Intervention"
+echo "  - /fixer <issue>      Review Fixes -> apply feedback -> In Progress"
+echo ""
+echo "SOUL's hard limits bound the autonomous-loop risk:"
 echo "  - no human-facing messages get sent (drafts only)"
 echo "  - no merges to main/production"
 echo "  - no force-pushes to shared branches"
 echo "  - no silent architecture-level decisions"
-echo "But you should still review the first few runs end-to-end."
+echo "Review the first few /maybe-do-work runs end-to-end."
