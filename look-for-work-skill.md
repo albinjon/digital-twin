@@ -7,7 +7,7 @@ description: Find concrete candidate work items for Albin (or an agent acting on
 
 Produce a ranked list of concrete candidate work items the user (or an agent acting on his behalf) can pick up next. The goal is *candidate generation*, not situational awareness — daily-digest is the right tool when the user wants a status overview. Use this skill when the next step is acting, not informing.
 
-The output is designed to be consumed by both humans and agents. The avatar (`be-albin`) consumes it as the first step of its "what should I do now?" loop, then layers on autonomy classification, memory checks, and ranking. A user invoking it directly gets a structured candidate list they can pick from.
+The output is designed to be consumed by both humans and agents. An agent operating under SOUL (via `/be-albin`) consumes it as the first step of the "what should I do now?" loop, then layers on autonomy classification, memory checks, and ranking. A user invoking it directly gets a structured candidate list they can pick from.
 
 ## User context — know where things live
 
@@ -52,7 +52,7 @@ If the In-Progress query returns empty, the queue might genuinely be clear — b
 - Filter out: automated/bot messages, social/banter channels, ambient discussion with no question or decision pending
 - → action type: **draft-reply**
 
-These are always "propose only" — sending is never automated. Don't draft the reply itself in this skill; the avatar (or user) does that separately.
+These are always "propose only" — sending is never automated. Don't draft the reply itself in this skill; the caller (a SOUL-operating agent, or the user) does that separately.
 
 ### Gmail — threads needing a drafted reply (Skry only)
 
@@ -73,7 +73,7 @@ For every candidate, capture:
 - **Identifier** — PR number, issue key, thread link (so the caller can route directly)
 - **Age** — how long it's been sitting (helps the caller judge urgency)
 - **Who else is involved** — author for PRs, reporter for issues, sender for threads
-- **Reversibility hint** — most action types are reversible-leaning (review-as-draft, draft-PR, etc.). `draft-reply` is always propose-only (sending is never automated). `implement` for issues that touch architecture-level concerns (new service, new dep, schema change) leans propose; routine implementation leans reversible. This is a *hint* — the avatar applies the final autonomy call.
+- **Reversibility hint** — most action types are reversible-leaning (review-as-draft, draft-PR, etc.). `draft-reply` is always propose-only (sending is never automated). `implement` for issues that touch architecture-level concerns (new service, new dep, schema change) leans propose; routine implementation leans reversible. This is a *hint* — the caller (operating under SOUL) makes the final autonomy call.
 
 ## Step 3: Order within each context
 
@@ -133,11 +133,11 @@ End with a one-line summary noting the count and where activity is heaviest — 
 
 ## What this skill deliberately doesn't do
 
-- **No drafting of replies.** It identifies threads where a reply is needed; the avatar (or user) drafts in a separate step. This is so the skill stays cheap to run — drafting is expensive and the user might pick a different candidate anyway.
-- **No firm reversible/propose classification.** It hints with the `arch` flag and reversibility-hint logic, but the avatar applies the final autonomy call (because it has access to memory and the broader judgment context).
-- **No "top recommendation" pick.** Ranking by work-bias priority and producing a single "do this next" verdict is the avatar's job. Look-for-work surfaces the candidates honestly; the avatar adds opinion.
+- **No drafting of replies.** It identifies threads where a reply is needed; the caller (a SOUL-operating agent, or the user) drafts in a separate step. This is so the skill stays cheap to run — drafting is expensive and the user might pick a different candidate anyway.
+- **No firm reversible/propose classification.** It hints with the `arch` flag and reversibility-hint logic, but the caller (operating under SOUL) makes the final autonomy call — they have access to memory and the broader judgment context.
+- **No "top recommendation" pick.** Ranking by work-bias priority and producing a single "do this next" verdict is the SOUL-operating caller's job. Look-for-work surfaces the candidates honestly; the caller adds opinion.
 - **No calendar / meetings / status info.** That's daily-digest's job. Look-for-work is action-only.
-- **No drafted PRs or executed work.** Generating actions on candidates is for downstream tools (the avatar, or the user choosing manually). Look-for-work observes, doesn't act.
+- **No drafted PRs or executed work.** Generating actions on candidates is for downstream tools (a SOUL-operating agent, or the user choosing manually). Look-for-work observes, doesn't act.
 
 ## Edge cases
 
@@ -151,6 +151,6 @@ End with a one-line summary noting the count and where activity is heaviest — 
 
 Daily-digest answers "what's the state of my world?" — meetings, status, ambient activity, decisions in flight. It's a briefing for a human about to start their day.
 
-Look-for-work answers "what's the next concrete thing I (or an agent) could pick up?" — actionable candidates, normalized for downstream consumption, with enough metadata that the avatar can apply autonomy rules and produce a single "do this next" recommendation. It's a feed, not a briefing.
+Look-for-work answers "what's the next concrete thing I (or an agent) could pick up?" — actionable candidates, normalized for downstream consumption, with enough metadata that a SOUL-operating agent can apply autonomy rules and produce a single "do this next" recommendation. It's a feed, not a briefing.
 
 When both might apply: prefer daily-digest when the user wants to *understand* their situation; prefer look-for-work when the user (or an agent) wants something to *do*. They can be invoked back-to-back too — daily-digest for the context, then look-for-work to get unstuck.

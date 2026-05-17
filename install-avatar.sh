@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
 # Install Albin's agent setup into ~/.claude/:
-#   - be-albin skill        (avatar identity, bundled with the avatar profile)
-#   - look-for-work skill   (candidate-finder the avatar relies on)
-#   - maybe-do-work skill   (autonomous executor; chains the other two)
+#   - be-albin skill        (loads engineering SOUL; bundled with SOUL.md)
+#   - look-for-work skill   (candidate-finder, SOUL-aware downstream consumers)
+#   - maybe-do-work skill   (autonomous executor; chains the other two + /notify)
 #   - CLAUDE.md auto-load pointer so Claude Code sessions pick it all up
 #
 # Idempotent — safe to re-run. After the first run, ~/.claude/skills/<each>/
 # are the canonical homes; staging files in this workspace folder become
-# superfluous.
+# superfluous. On re-install, any orphan albin-avatar.md from a previous
+# install gets cleaned up.
 #
 # Usage:
-#   bash /Users/albin/Documents/Claude/Projects/AlbinAI/install-avatar.sh
+#   bash /Users/albin/digital-albin/claude-desktop/Documents/Claude/Projects/AlbinAI/install-avatar.sh
 
 set -euo pipefail
 
-STAGING="/Users/albin/Documents/Claude/Projects/AlbinAI"
+STAGING="/Users/albin/digital-albin/claude-desktop/Documents/Claude/Projects/AlbinAI"
 SKILLS_ROOT="$HOME/.claude/skills"
 CLAUDE_MD="$HOME/.claude/CLAUDE.md"
-SENTINEL="<!-- albin-avatar:pointer -->"
+SENTINEL="<!-- albin-soul:pointer -->"
+OLD_SENTINEL="<!-- albin-avatar:pointer -->"
 
 # Install a single skill: copy listed files into ~/.claude/skills/<name>/,
 # init git there if needed, otherwise commit drift. Each skill folder gets its
@@ -69,46 +71,64 @@ if [ -d "$STAGING/.git" ] && ! (cd "$STAGING" && git rev-parse --git-dir >/dev/n
     rm -rf "$STAGING/.git"
 fi
 
-# --- 2. Install all three skills ---
+# --- 2. Migrate: remove orphan albin-avatar.md from a prior install ---
+ORPHAN="$SKILLS_ROOT/be-albin/albin-avatar.md"
+if [ -f "$ORPHAN" ]; then
+    echo "Removing orphan albin-avatar.md (superseded by SOUL.md) ..."
+    rm "$ORPHAN"
+fi
+
+# --- 3. Install all three skills ---
 install_skill "be-albin" \
-    "be-albin v1: skill + bundled avatar profile" \
+    "be-albin v2: load engineering SOUL (principles + personal calibration)" \
     "be-albin-skill.md:SKILL.md" \
-    "albin-avatar.md:albin-avatar.md"
+    "SOUL.md:SOUL.md"
 
 install_skill "look-for-work" \
-    "look-for-work v1: candidate-finder for the avatar's what-should-I-do-now loop" \
+    "look-for-work v1: candidate-finder for the SOUL-driven what-should-I-do-now loop" \
     "look-for-work-skill.md:SKILL.md"
 
 install_skill "maybe-do-work" \
-    "maybe-do-work v1: autonomous executor chaining /look-for-work + /be-albin" \
+    "maybe-do-work v1: autonomous executor chaining /look-for-work + /be-albin + /notify" \
     "maybe-do-work-skill.md:SKILL.md"
 
-# --- 3. Append the auto-load pointer to ~/.claude/CLAUDE.md (idempotent) ---
+# --- 4. Append the auto-load pointer to ~/.claude/CLAUDE.md (idempotent) ---
 echo ""
 echo "==> CLAUDE.md pointer"
 mkdir -p "$(dirname "$CLAUDE_MD")"
+
+# If an old (avatar-flavored) pointer is present, leave a note for Albin to
+# remove it; we don't auto-rewrite his CLAUDE.md, that's his to edit.
+if [ -f "$CLAUDE_MD" ] && grep -qF "$OLD_SENTINEL" "$CLAUDE_MD"; then
+    echo "  -> NOTE: previous '$OLD_SENTINEL' block detected in $CLAUDE_MD"
+    echo "          You'll want to delete the old block manually; the new"
+    echo "          SOUL pointer below replaces it (different sentinel)."
+fi
+
 if [ -f "$CLAUDE_MD" ] && grep -qF "$SENTINEL" "$CLAUDE_MD"; then
-    echo "  -> already present, skipping"
+    echo "  -> SOUL pointer already present, skipping append"
 else
     cat >>"$CLAUDE_MD" <<'EOF'
 
 
-<!-- albin-avatar:pointer -->
-# Albin avatar
+<!-- albin-soul:pointer -->
+# Albin's engineering SOUL
 
-When acting on Albin's behalf in engineering work, read and apply the avatar profile at `~/.claude/skills/be-albin/albin-avatar.md`. It defines the engineering taste (earn-its-keep, no defensive maximalism), execution rules (think-before-coding, surgical-not-bandaid, goal-driven with verify steps), autonomy rules (act on reversible, propose on the rest; never send human-facing messages, never merge to main, never force-push shared history), work bias (unblock others -> small shippable -> tech debt -> hard problems), and output voice (casual, conversational).
+When acting on Albin's behalf in engineering work, read and apply the SOUL doc at `~/.claude/skills/be-albin/SOUL.md`. It has two layers: universalizable engineering principles (earn-its-keep, surgical-not-bandaid, no defensive maximalism, goal-driven, etc.) and Albin's personal calibration (hard limits — never send human-facing messages, never merge to main, never force-push shared history; work-bias priority — unblock others -> small shippable -> tech debt -> hard problems; voice — casual, conversational).
+
+The agent doesn't pretend to be Albin; it operates under the values he's codified.
 
 Three skills work together:
-- `be-albin` — adopts the avatar identity; load before any work delegated from Albin.
-- `look-for-work` — scans candidate work (PRs, tickets, threads needing reply) and produces a structured candidate list.
-- `maybe-do-work` — runs the full autonomous loop: scan via /look-for-work, adopt via /be-albin, pick the highest-priority reversible item, execute, report. "Did nothing" is a valid outcome when nothing reversible is appropriate.
+- `be-albin` — loads SOUL. Use before any work delegated from Albin.
+- `look-for-work` — scans candidate work (PRs, tickets, threads needing reply) and produces a structured candidate list for a SOUL-operating agent to reason over.
+- `maybe-do-work` — runs the full autonomous loop: scan via /look-for-work, load SOUL via /be-albin, pick the highest-priority reversible item, execute, report (and notify Albin via /notify if he needs to weigh in). "Did nothing" is a valid outcome when nothing reversible is appropriate.
 EOF
     echo "  -> $CLAUDE_MD updated"
 fi
 
 echo ""
 echo "Done. Wiring:"
-echo "  - be-albin           $SKILLS_ROOT/be-albin/        (skill + bundled avatar, git'd)"
+echo "  - be-albin           $SKILLS_ROOT/be-albin/        (skill + bundled SOUL, git'd)"
 echo "  - look-for-work      $SKILLS_ROOT/look-for-work/   (skill, git'd)"
 echo "  - maybe-do-work      $SKILLS_ROOT/maybe-do-work/   (skill, git'd)"
 echo "  - Auto-load (Code)   $CLAUDE_MD"
@@ -118,11 +138,11 @@ echo "Staging files in $STAGING/ are no longer canonical — delete the folder"
 echo "or keep it as a Cowork working area, your call."
 echo ""
 echo "Smoke tests (run each in a fresh Claude Code session):"
-echo "  1. 'what should I do now?'         -> avatar consults /look-for-work, recommends"
+echo "  1. 'what should I do now?'         -> SOUL consults /look-for-work, recommends"
 echo "  2. 'find me something to do'       -> /look-for-work directly, candidate list"
 echo "  3. 'go pick something and do it'   -> /maybe-do-work, autonomous loop"
 echo ""
-echo "For (3), the avatar's hard limits bound the risk:"
+echo "For (3), SOUL's hard limits bound the risk:"
 echo "  - no human-facing messages get sent (drafts only)"
 echo "  - no merges to main/production"
 echo "  - no force-pushes to shared branches"

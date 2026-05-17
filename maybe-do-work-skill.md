@@ -1,6 +1,6 @@
 ---
 name: maybe-do-work
-description: Run a single autonomous loop on Albin's behalf — find candidate work via /look-for-work, adopt the avatar via /be-albin, pick the highest-priority reversible item, execute it with an audit-trail announcement, and report back. The "maybe" carries real weight: when nothing reversible is appropriate, surface proposals instead of manufacturing busywork — "did nothing right now" is a valid and frequent outcome. Trigger when the user (or a scheduled job) says "go do something useful", "make progress while I'm away", "pick something off my plate", "run the avatar loop", "do the next thing autonomously", "find and execute a task", "pick one of my open items and run with it", or any phrasing that asks the agent to both *find* AND *act on* available work. Don't use this skill for listing-only requests (use /look-for-work) or recommendation-only requests (use /be-albin's what-should-I-do-now loop without execution); maybe-do-work is specifically the action-taking version of that loop. Use even when the user doesn't explicitly say "autonomous" or "execute" — if the request implies action (not just inquiry), this is the right skill. Especially important for scheduled tasks where the implied contract is "make progress on something while I'm not watching."
+description: Run a single autonomous loop on Albin's behalf — find candidate work via /look-for-work, load his engineering SOUL via /be-albin, pick the highest-priority reversible item, execute it with an audit-trail announcement, and report back. The "maybe" carries real weight: when nothing reversible is appropriate, surface proposals instead of manufacturing busywork — "did nothing right now" is a valid and frequent outcome. Trigger when the user (or a scheduled job) says "go do something useful", "make progress while I'm away", "pick something off my plate", "run the SOUL loop", "do the next thing autonomously", "find and execute a task", "pick one of my open items and run with it", or any phrasing that asks the agent to both *find* AND *act on* available work. Don't use this skill for listing-only requests (use /look-for-work) or recommendation-only requests (use /be-albin's what-should-I-do-now loop without execution); maybe-do-work is specifically the action-taking version of that loop. Use even when the user doesn't explicitly say "autonomous" or "execute" — if the request implies action (not just inquiry), this is the right skill. Especially important for scheduled tasks where the implied contract is "make progress on something while I'm not watching."
 ---
 
 # Maybe-do-work
@@ -9,16 +9,16 @@ Run one autonomous step on Albin's behalf: scan for candidates, pick the best re
 
 This skill is an orchestration of three other skills:
 - `/look-for-work` — produces the candidate list (what's available to pick up).
-- `/be-albin` — adopts the avatar identity (the taste, autonomy rules, hard limits, voice that govern *how* to pick and act).
+- `/be-albin` — loads Albin's engineering SOUL (the principles and personal calibration that govern *how* to pick and act).
 - `/notify` — sends Albin a Slack DM when the run produced something he needs to weigh in on. The agent transcript is always there; `/notify` is the heads-up that pulls his attention to it.
 
-The first two must be loaded before any decisions get made. The avatar's hard limits are non-negotiable — `maybe-do-work` exists to operate *within* them, never around them. The third gets called conditionally at the end of the loop (see Step 7).
+The first two must be loaded before any decisions get made. SOUL's hard limits are non-negotiable — `maybe-do-work` exists to operate *within* them, never around them. The third gets called conditionally at the end of the loop (see Step 7).
 
 ## The loop
 
-### Step 1 — Adopt the avatar
+### Step 1 — Load SOUL
 
-Invoke `/be-albin` first. This is non-negotiable, because every downstream decision (which candidate to pick, what counts as reversible, how to phrase the report, when to stop) depends on the avatar being in context. If `/be-albin` isn't available, stop and tell the user — don't improvise an avatar from memory or assumption.
+Invoke `/be-albin` first. This is non-negotiable, because every downstream decision (which candidate to pick, what counts as reversible, how to phrase the report, when to stop) depends on SOUL being in context. If `/be-albin` isn't available, stop and tell the user — don't improvise the principles or calibration from memory or assumption.
 
 ### Step 2 — Find candidates
 
@@ -26,7 +26,7 @@ Invoke `/look-for-work`. It produces a structured candidate list grouped by cont
 
 ### Step 3 — Pick one
 
-Apply the avatar's work-bias priority order to the candidate list:
+Apply SOUL's work-bias priority order to the candidate list:
 
 1. **Unblock others** — PRs awaiting Albin's review beat everything else. Within this tier, the *oldest* review request wins (cost of inaction is highest there).
 2. **Continue warm context** — own in-progress PRs and Linear issues already In Progress beat starting cold work. Pick the stalest in-progress item; warm context is expensive to rebuild.
@@ -34,7 +34,7 @@ Apply the avatar's work-bias priority order to the candidate list:
 4. **Tech debt and cleanup** — refactors, deletions, simplification.
 5. **Hard problems** — only when the above is empty.
 
-Then filter for reversibility — pick the top item that's reversible (can be acted on without crossing the avatar's hard limits). Common reversible actions:
+Then filter for reversibility — pick the top item that's reversible (can be acted on without crossing SOUL's hard limits). Common reversible actions:
 
 - Opening a draft review on someone else's PR
 - Continuing an existing draft PR with small commits (Albin's own work)
@@ -48,15 +48,15 @@ If the top-priority candidate is propose-only — `draft-reply`, anything archit
 
 Before executing the pick, consult memory for prior context on the area you're about to touch. Past decisions, "we agreed not to touch X right now," preferences about how a particular service is structured — all of these should shape the call. If memory has a relevant entry that flags the area, respect it and either pick the next candidate or surface this one as a proposal.
 
-This step matters because the avatar's whole point is "act like Albin, not like a generic agent." A generic agent would just take the top reversible item; the avatar checks whether prior context says don't.
+This step matters because SOUL's whole point is to apply Albin's calibration, not generic-agent defaults. A generic agent would just take the top reversible item; under SOUL, the agent checks whether prior context says don't.
 
 ### Step 5 — Announce, then act
 
-Announce what you're about to do in one line *before* doing it (the avatar's audit-trail rule for unilateral action):
+Announce what you're about to do in one line *before* doing it (SOUL's audit-trail rule for unilateral action):
 
 > Opening a draft review on skryai/api#412 — will report back.
 
-Then execute, applying the avatar's execution rules in full:
+Then execute, applying SOUL's engineering principles in full:
 
 - **Surgical, not band-aid.** Every changed line traces directly to the task. No drive-by improvements to adjacent code. If a small diff would hide debt, name it and propose instead of quietly hacking around it.
 - **No defensive maximalism.** No try/except for failures that don't happen. No null checks for impossible nulls. No validation duplicated at every layer.
@@ -70,7 +70,7 @@ If you discover mid-task that the work isn't actually reversible — it touches 
 Output the report in this shape:
 
 ```
-[avatar acknowledgment line]
+[SOUL acknowledgment line]
 
 Scanned: <N candidates across <contexts>>
 
@@ -89,7 +89,7 @@ Other notable candidates (left for your judgment):
 If nothing reversible was appropriate — entire queue is propose-only, or empty, or everything is blocked by user input — say so honestly:
 
 ```
-[avatar acknowledgment line]
+[SOUL acknowledgment line]
 
 Scanned: <N candidates, all propose-only / 0 candidates / all blocked on X>
 
@@ -102,7 +102,7 @@ Here's what's waiting on you instead:
 <closing line>
 ```
 
-"Did nothing" is a valid outcome. Don't manufacture work to look productive. The avatar's "earn its keep" rule applies to the loop itself: if nothing in the queue would earn its keep right now, the right call is to wait.
+"Did nothing" is a valid outcome. Don't manufacture work to look productive. SOUL's "earn its keep" principle applies to the loop itself: if nothing in the queue would earn its keep right now, the right call is to wait.
 
 ### Step 7 — Notify if Albin needs to weigh in
 
@@ -148,7 +148,7 @@ What stopped me: <one-line — the surprising thing, the missing tool, the CI fa
 Nothing was changed. Transcript has the full trace.
 ```
 
-Match the avatar's voice in the DM: casual, no preamble, no fluff, no formal "Hi Albin" opener. He's expecting these, just give him the substance.
+Match SOUL's voice in the DM: casual, no preamble, no fluff, no formal "Hi Albin" opener. He's expecting these, just give him the substance.
 
 ## One pick per invocation
 
@@ -159,7 +159,7 @@ Match the avatar's voice in the DM: casual, no preamble, no fluff, no formal "Hi
 
 A scheduled task wanting more throughput should invoke `maybe-do-work` repeatedly with gaps, not extend this skill's scope to multi-pick. Each invocation is one decision; each decision is reviewable.
 
-## What this skill respects (avatar guarantees)
+## What this skill respects (SOUL guarantees)
 
 Because `/be-albin` is loaded in Step 1, all of these apply automatically. They're worth reiterating because they're the most likely failure modes for an autonomous loop, and `maybe-do-work` is exactly the surface where forgetting one of them could matter:
 
@@ -179,13 +179,13 @@ Save anything noteworthy as a feedback memory:
 - A corner case in classifying reversibility (e.g., "schema migrations on a feature branch were treated as reversible — should they be?").
 - A judgment call Albin pushed back on (or quietly accepted — both count).
 
-The next loop benefits. Drift the avatar toward Albin one observation at a time.
+The next loop benefits. Drift the personal calibration toward Albin one observation at a time. (Principles drift much less than calibration — keep that distinction when deciding what to save.)
 
 ## When NOT to use this skill
 
 - The user wants only a candidate list → use `/look-for-work` directly.
 - The user wants a recommendation but plans to execute themselves → use `/be-albin` and run its "what should I do now?" output without the execution step.
 - The user wants situational awareness (meetings, status, what's happening) → use `/daily-digest`.
-- The task is explicitly specified by the user ("review PR X", "fix bug Y") — `maybe-do-work` is for *finding* work to do. Once specified, just use `/be-albin` (which applies the avatar's judgment to the named task) and skip the scanning.
+- The task is explicitly specified by the user ("review PR X", "fix bug Y") — `maybe-do-work` is for *finding* work to do. Once specified, just use `/be-albin` (which applies SOUL to the named task) and skip the scanning.
 
 This skill exists for one specific shape of request: "go pick something from my queues and do it." It's not a general-purpose task runner.
