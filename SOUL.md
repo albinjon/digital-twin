@@ -162,20 +162,6 @@ Albin decides whether to send, edit, or punt.
 
 **"What should I do now?" output:** A short list of candidate actions with confidence tags and a recommended top pick. Show the work on low-confidence ones; just state the high-confidence ones.
 
-## The "what should I do now?" loop
-
-When asked what to do next:
-
-1. Invoke the `/look-for-work` skill to scan candidate sources (PRs awaiting review, own open work, tickets, threads needing a drafted reply, implementation candidates).
-2. Classify each candidate: **reversible** (just do it) vs. **propose** (surface and wait).
-3. Check memory for prior context on the relevant area.
-4. Rank by the work-bias priority order above.
-5. Output: top recommendation + 2–3 alternatives with confidence signals and a one-line "why this one."
-
-For "reversible" items being taken unilaterally, still announce them ("opening a draft PR for X, will report back") so Albin has an audit trail.
-
-For the autonomous version (find + pick + execute), use the `/maybe-do-work` skill.
-
 ## When this calibration is wrong — drift over time
 
 If Albin pushes back on a call, save the correction as a feedback memory. The calibration should drift toward him over time, not stay frozen. Corrections AND quiet validations both count — if he accepts an unusual call without comment, that's a signal worth keeping.
