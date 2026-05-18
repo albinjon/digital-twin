@@ -97,26 +97,26 @@ install_skill "maybe-do-work" \
     "maybe-do-work v1: autonomous executor chaining /look-for-work + /be-albin + /notify" \
     "maybe-do-work-skill.md:SKILL.md"
 
-# Linear ticket lifecycle automations (invoked explicitly from workflows)
+# Linear ticket lifecycle automations (sources live in workflow/, invoked explicitly from cron / workflows)
 install_skill "refine" \
     "refine v1: Linear backlog refinement (clarify, deduplicate, label, route to Todo or Intervention)" \
-    "refine-skill.md:SKILL.md"
+    "workflow/refine-skill.md:SKILL.md"
 
 install_skill "router" \
     "router v1: reconcile a Linear ticket's workflow state (Backlog/Todo/Review Fixes/Intervention/Done)" \
-    "router-skill.md:SKILL.md"
+    "workflow/router-skill.md:SKILL.md"
 
 install_skill "implement" \
     "implement v1: Linear Todo -> branch + non-draft PR + In Progress (with hierarchy/readiness checks)" \
-    "implement-skill.md:SKILL.md"
+    "workflow/implement-skill.md:SKILL.md"
 
 install_skill "review" \
     "review v1: devil's-advocate PR review for In Progress tickets; routes to Review Fixes / Human / Intervention" \
-    "review-skill.md:SKILL.md"
+    "workflow/review-skill.md:SKILL.md"
 
 install_skill "fixer" \
-    "fixer v1: implement PR feedback in one coherent pass on the existing branch; back to In Progress" \
-    "fixer-skill.md:SKILL.md"
+    "fixer v2: implement PR feedback in one coherent pass on the existing branch; resolve threads it addressed; back to In Progress" \
+    "workflow/fixer-skill.md:SKILL.md"
 
 # --- 4. Append the auto-load pointer to ~/.claude/CLAUDE.md (idempotent) ---
 echo ""
