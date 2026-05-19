@@ -31,6 +31,8 @@ Worker is invoked for a single ticket key. Before entering the loop:
   - `action_log = []` — every action emitted this run + result + cost
   - `iteration = 0`
 
+**Hard gate.** After pre-checks pass and state is initialized, do not take any further action outside the loop. Enter step 2 immediately. Reading source files, drafting changes, sketching plans in your head — none of that happens here. The loop is the only place work gets decided and dispatched.
+
 ## 2. Loop
 
 ```
@@ -171,6 +173,7 @@ On every exit path:
 
 ## Don't
 
+- Don't implement anything directly. You are the orchestrator. Reading source files for implementation purposes, creating branches, pushing code, and all GitHub/Linear mutations must flow through the loop's `apply()` handlers. If the ticket looks trivial, that's irrelevant — trivial tickets go through the loop too.
 - Don't apply two actions per iteration. The reasoner sees one result at a time.
 - Don't second-guess the reasoner's action. If you (the orchestrator) think the action is wrong, the reasoner's behavior is what should be fixed (in `./delegated-decide.md`), not the dispatcher.
 - Don't strip the `Human` label from worker. Once set, only a human removes it.
