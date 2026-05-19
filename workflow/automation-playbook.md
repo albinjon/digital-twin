@@ -4,7 +4,7 @@
 
 The Linear-driven automation has three entry points, all packaged as skills under `skills/`:
 
-- **`/poller`** — Hermes' cron fires this every 5 minutes. It picks at most one qualifying touched ticket and spawns `/worker` on it (fire-and-forget). See `skills/poller/SKILL.md`.
+- **`/poller`** — Hermes' cron fires this every 5 minutes. It picks at most one qualifying ticket in `Todo` (preferred) or `Backlog` and spawns `/worker` on it (fire-and-forget). Older tickets are eligible; there's no touch-time window. See `skills/poller/SKILL.md`.
 
 - **`/worker`** — drives one ticket through its full lifecycle in a single autonomous run. Reads ticket + PR state, asks a reasoner subprocess for one structured action at a time, applies it via Hermes' integrations (Linear / GitHub / Discord / git), loops. Heavy actions (`start_implementation`, `apply_fixes`, `run_tests`) spawn `claude-code` subprocesses in coder/tester mode. Terminates on `request_human`, `request_intervention`, terminal Linear state, or a 20-action max-iter cap. See `skills/worker/SKILL.md`.
 
@@ -25,7 +25,7 @@ Every `/worker` invocation runs these on entry, regardless of caller. Any failur
 3. **Run cooldown** — `/worker` ran on this ticket in the last 15 min.
 4. **Active-run lock** — a `/worker` run is currently in progress on this ticket.
 
-`/poller` applies the same filter when selecting a candidate, plus an additional one: the ticket must not be in a terminal state (`Done` / `Duplicate` / `Canceled` / `Intervention`). `Intervention` tickets are handled separately by `/intervention-pinger` (daily cron).
+`/poller` applies the same filter when selecting a candidate, plus a stricter state rule: it only considers tickets in `Todo` or `Backlog`, with `Todo` taking priority and `created_at` ascending as the within-tier tiebreaker. Tickets in `In Progress`, `Review Fixes`, or any other state are not picked by `/poller` — they're either inside a live `/worker` run or waiting for human nudge. `Intervention` tickets are handled separately by `/intervention-pinger` (daily cron).
 
 ---
 
@@ -34,7 +34,7 @@ Every `/worker` invocation runs these on entry, regardless of caller. Any failur
 | Lever                              | Default     |
 | ---------------------------------- | ----------- |
 | Cron interval                      | 5 min       |
-| Poll window                        | 10 min      |
+| Poller candidate states            | `Todo` (tier 1) → `Backlog` (tier 2); FIFO by `created_at` within a tier |
 | Run cooldown per ticket            | 15 min      |
 | Max actions per `/worker` run      | 20          |
 | Discord ping on `Intervention`     | once per daily cron fire (governed by Hermes' cron schedule, not skill logic) |

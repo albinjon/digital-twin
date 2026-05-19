@@ -1,6 +1,6 @@
 ---
 name: poller
-description: The cron's per-tick logic. Polls Linear every 5 minutes for recently touched tickets, picks at most ONE qualifying ticket (most recently touched), and fires `/worker` on it. Fire-and-forget — /poller exits immediately after spawning the worker, so each tick is short and the next tick can start cleanly. Intervention pings live in a separate daily cron (`/intervention-pinger`), not here.
+description: The cron's per-tick logic. Every 5 minutes, picks at most ONE qualifying ticket in `Todo` (preferred) or `Backlog` from teams VER/LAV/ZBS and fires `/worker` on it. No touch-time window — older tickets are eligible. Fire-and-forget — /poller exits immediately after spawning the worker, so each tick is short and the next tick can start cleanly. Intervention pings live in a separate daily cron (`/intervention-pinger`), not here.
 ---
 
 # poller (Hermes-side cron entry)
@@ -17,14 +17,16 @@ Intervention Discord pings are handled by a separate daily cron, `/intervention-
 
 Hermes has three Linear org MCPs connected. Within those orgs we only act on three teams: `VER` (Verkis), `LAV` (Ledger / Lavora), and `ZBS` (ZBS-Web). The orgs contain other teams too — those are out of scope.
 
-Fetch from each connected Linear MCP: tickets touched in the last 10 minutes belonging to teams `VER`, `LAV`, or `ZBS`. Scope the query by team at the MCP layer when possible; whatever the MCP can't filter, drop in the qualification step below. "Touched" = any state change, label change, comment, or description edit. The poll window is 2× the cron interval to catch events that land between ticks.
+Fetch from each connected Linear MCP: every ticket in `Todo` or `Backlog` state belonging to teams `VER`, `LAV`, or `ZBS`. **No touch-time filter** — a ticket sitting in `Todo` for a week is just as eligible as one moved there this morning. Scope by team and state at the MCP layer when possible; whatever the MCP can't filter, drop in the qualification step below.
+
+(Other non-terminal states — `In Progress`, `Review Fixes`, etc. — are not candidates for `/poller`. Tickets reach those states from inside a `/worker` run; if a run exits early and leaves a ticket there, the next forward motion comes from a human nudge or a follow-up state move, not from `/poller`.)
 
 ### Filter to qualifying
 
 A ticket qualifies if **all** are true:
 
 - **Ticket key starts with `VER-`, `LAV-`, or `ZBS-`.** Mandatory prefix check, applied regardless of which org MCP surfaced the ticket. The MCP returning a ticket is not authorization to act on it. Any other prefix → drop silently. Never expand this allowlist inline; it lives in this skill text by design.
-- **Not in a terminal Linear state.** Excludes `Done`, `Duplicate`, `Canceled`, `Intervention`. (Intervention tickets are pinged daily by `/intervention-pinger`, not picked up here.)
+- **State is `Todo` or `Backlog`.** Re-check after fetch; defense in depth in case the MCP's state filter is loose.
 - **No `Human` label.** Human-lane tickets are off-limits to automation.
 - **No active-run lock for `/worker` on this ticket.** A previous tick's worker is still running; let it finish. Source: `active_runs["<ticket>:worker"]` in `~/.hermes/run-table.json` (entries with `expires_at` in the past are treated as released; see worker skill § State).
 - **Run cooldown elapsed.** Default 15 min since the last `/worker` exit on this ticket. Source: `cooldowns[ticket]` in `~/.hermes/run-table.json`.
@@ -33,7 +35,14 @@ Tickets failing any check are skipped (not logged loudly — this is the common 
 
 ### Pick one
 
-Among qualifying candidates, sort by `last_updated_at` descending and pick the **first** (most recently touched). The others wait for the next tick; if they're still qualifying then, the next tick picks the most recently touched of that pool. Recently-touched tickets always have priority.
+Two-tier priority:
+
+1. **Tier 1 — `Todo`.** Among qualifying `Todo` tickets, pick the one with the **earliest `created_at`** (FIFO — the longest-waiting Todo wins).
+2. **Tier 2 — `Backlog`.** Only consulted if tier 1 is empty. Same FIFO rule: earliest `created_at` wins.
+
+A `Todo` ticket always beats every `Backlog` ticket, even if the `Backlog` ticket is older.
+
+If neither tier has a qualifying candidate, the tick does nothing for this step.
 
 ### Fire `/worker`
 
@@ -58,5 +67,7 @@ If Hermes wants to cap concurrent worker runs globally (rate-limit / cost-contro
 - Don't wait for `/worker` to complete. The tick must be short.
 - Don't write to `~/.hermes/run-table.json`. The run-table is owned by `/worker`; `/poller` only reads it for the filter pass.
 - Don't ping anything from `/poller`. Intervention pings are handled by `/intervention-pinger` on a daily cron.
-- Don't bypass `/worker`'s pre-checks. `/poller`'s qualification filter is the same set; we don't pass an "approved" flag to skip checking.
-- Don't pick a ticket older than the poll window. Touched-in-last-10-min is the candidate pool; don't reach further back (otherwise stale tickets would re-trigger forever).
+- Don't bypass `/worker`'s pre-checks. `/poller`'s qualification filter is the same set (minus the state-tier rule, which is poller-specific); we don't pass an "approved" flag to skip checking.
+- Don't filter by recency. There's no touch-time window — a `Todo` ticket from a month ago is just as eligible as one moved this morning. The 15-min run cooldown is what prevents the same ticket from re-triggering every tick.
+- Don't pick a tier-2 (`Backlog`) ticket while a tier-1 (`Todo`) candidate qualifies. Tier order is strict.
+- Don't pick tickets in `In Progress`, `Review Fixes`, or any state other than `Todo` / `Backlog`. Those states are reached and left from inside `/worker`; the poller does not re-pick them.
