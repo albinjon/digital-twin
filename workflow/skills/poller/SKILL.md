@@ -1,16 +1,15 @@
 ---
 name: poller
-description: The cron's per-tick logic. Polls Linear every 5 minutes for recently touched tickets, picks at most ONE qualifying ticket (most recently touched), and fires `/worker` on it. Also scans Intervention tickets and sends Discord pings for any that haven't been pinged in the last 24h. Fire-and-forget — /poller exits immediately after spawning the worker, so each tick is short and the next tick can start cleanly.
+description: The cron's per-tick logic. Polls Linear every 5 minutes for recently touched tickets, picks at most ONE qualifying ticket (most recently touched), and fires `/worker` on it. Fire-and-forget — /poller exits immediately after spawning the worker, so each tick is short and the next tick can start cleanly. Intervention pings live in a separate daily cron (`/intervention-pinger`), not here.
 ---
 
 # poller (Hermes-side cron entry)
 
-The single source of truth for "what happens each 5-minute tick". Hermes' cron fires `/poller`; `/poller` does exactly two things per tick:
+The single source of truth for "what happens each 5-minute tick". Hermes' cron fires `/poller`; `/poller` does exactly one thing per tick: pick at most one qualifying ticket and fire `/worker` on it (fire-and-forget).
 
-1. Pick at most one qualifying ticket and fire `/worker` on it (fire-and-forget).
-2. Scan `Intervention` tickets and send Discord pings for any that haven't been pinged in 24h.
+`/poller` is pure Hermes orchestration. No delegated subprocess. It's a Linear read pass, a filter against the run-table at `~/.hermes/run-table.json` (read-only — owned by `/worker`; see `../worker/SKILL.md` § State), and one fire-and-forget spawn of `/worker`.
 
-`/poller` is pure Hermes orchestration. No delegated subprocess. It's all Linear/Discord reads and writes plus one fire-and-forget spawn of `/worker`.
+Intervention Discord pings are handled by a separate daily cron, `/intervention-pinger` — see `../intervention-pinger/SKILL.md`.
 
 ## 1. Pick one qualifying ticket
 
@@ -22,10 +21,10 @@ Fetch from Linear: every ticket touched in the last 10 minutes. "Touched" = any 
 
 A ticket qualifies if **all** are true:
 
-- **Not in a terminal Linear state.** Excludes `Done`, `Duplicate`, `Canceled`, `Intervention`. (Intervention tickets get the Discord ping scan below, not a worker run.)
+- **Not in a terminal Linear state.** Excludes `Done`, `Duplicate`, `Canceled`, `Intervention`. (Intervention tickets are pinged daily by `/intervention-pinger`, not picked up here.)
 - **No `Human` label.** Human-lane tickets are off-limits to automation.
-- **No active-run lock for `/worker` on this ticket.** A previous tick's worker is still running; let it finish.
-- **Run cooldown elapsed.** Default 15 min since the last `/worker` exit on this ticket.
+- **No active-run lock for `/worker` on this ticket.** A previous tick's worker is still running; let it finish. Source: `active_runs["<ticket>:worker"]` in `~/.hermes/run-table.json` (entries with `expires_at` in the past are treated as released; see worker skill § State).
+- **Run cooldown elapsed.** Default 15 min since the last `/worker` exit on this ticket. Source: `cooldowns[ticket]` in `~/.hermes/run-table.json`.
 
 Tickets failing any check are skipped (not logged loudly — this is the common case for most ticks).
 
@@ -39,30 +38,7 @@ Spawn `/worker <TICKET-KEY>` as a separate process. **Fire-and-forget** — do n
 
 If no ticket qualifies, do nothing for this step.
 
-## 2. Intervention Discord ping scan
-
-This runs every tick regardless of step 1. It's independent of worker activity.
-
-### Pull Intervention tickets
-
-Fetch every Linear ticket currently in `Intervention` state.
-
-### Filter to eligible
-
-A ticket is eligible for a ping if **no** Discord ping has been recorded for it in the last 24 hours. (Hermes tracks ping timestamps in its run table — same store as cooldowns.)
-
-### Ping each eligible ticket
-
-For each eligible ticket, send a Discord message to the user with:
-- ticket key + title
-- a one-line summary of what's blocked (pulled from the most recent automation-authored comment, typically `## Open questions` or an intervention reason)
-- a link to the ticket
-
-Record the ping timestamp so the same ticket isn't pinged again for 24h.
-
-This is bulk — every eligible Intervention ticket gets pinged once per tick maximum. (One Intervention ticket can only generate one ping per 24h regardless of how many ticks elapse.)
-
-## 3. Exit
+## 2. Exit
 
 `/poller` finishes the tick. Total runtime per tick is dominated by Linear API calls — should be a few seconds. Heavy work happens inside the `/worker` runs `/poller` spawned (which are independent processes).
 
@@ -76,6 +52,7 @@ If Hermes wants to cap concurrent worker runs globally (rate-limit / cost-contro
 
 - Don't fire `/worker` on more than one ticket per tick. The user's constraint: one qualifying ticket per poll.
 - Don't wait for `/worker` to complete. The tick must be short.
-- Don't ping the same Intervention ticket more than once per 24h. Honor the recorded timestamp.
+- Don't write to `~/.hermes/run-table.json`. The run-table is owned by `/worker`; `/poller` only reads it for the filter pass.
+- Don't ping anything from `/poller`. Intervention pings are handled by `/intervention-pinger` on a daily cron.
 - Don't bypass `/worker`'s pre-checks. `/poller`'s qualification filter is the same set; we don't pass an "approved" flag to skip checking.
 - Don't pick a ticket older than the poll window. Touched-in-last-10-min is the candidate pool; don't reach further back (otherwise stale tickets would re-trigger forever).

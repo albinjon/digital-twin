@@ -1,10 +1,12 @@
 # Automation playbook — overview
 
-The Linear-driven automation has two entry points, both packaged as skills under `skills/`:
+The Linear-driven automation has three entry points, all packaged as skills under `skills/`:
 
-- **`/poller`** — Hermes' cron fires this every 5 minutes. It picks at most one qualifying touched ticket and spawns `/worker` on it (fire-and-forget). It also scans `Intervention` tickets and sends Discord pings for any not pinged in 24h. See `skills/poller/SKILL.md`.
+- **`/poller`** — Hermes' cron fires this every 5 minutes. It picks at most one qualifying touched ticket and spawns `/worker` on it (fire-and-forget). See `skills/poller/SKILL.md`.
 
 - **`/worker`** — drives one ticket through its full lifecycle in a single autonomous run. Reads ticket + PR state, asks a reasoner subprocess for one structured action at a time, applies it via Hermes' integrations (Linear / GitHub / Discord / git), loops. Heavy actions (`start_implementation`, `apply_fixes`, `run_tests`) spawn `claude-code` subprocesses in coder/tester mode. Terminates on `request_human`, `request_intervention`, terminal Linear state, or a 20-action max-iter cap. See `skills/worker/SKILL.md`.
+
+- **`/intervention-pinger`** — Hermes' cron fires this once per day. Fetches every Linear ticket in `Intervention` state and sends one Discord ping per ticket. No state; the daily cadence is the dedupe. Independent of `/poller` and `/worker`. See `skills/intervention-pinger/SKILL.md`.
 
 `/worker` can also be invoked manually as `/worker <TICKET-KEY>` from an interactive Claude Code session — same loop, same pre-checks.
 
@@ -20,7 +22,7 @@ Every `/worker` invocation runs these on entry, regardless of caller. Any failur
 2. **Run cooldown** — `/worker` ran on this ticket in the last 15 min.
 3. **Active-run lock** — a `/worker` run is currently in progress on this ticket.
 
-`/poller` applies the same filter when selecting a candidate, plus an additional one: the ticket must not be in a terminal state (`Done` / `Duplicate` / `Canceled` / `Intervention`). `Intervention` tickets are handled separately by `/poller`'s Discord ping scan.
+`/poller` applies the same filter when selecting a candidate, plus an additional one: the ticket must not be in a terminal state (`Done` / `Duplicate` / `Canceled` / `Intervention`). `Intervention` tickets are handled separately by `/intervention-pinger` (daily cron).
 
 ---
 
@@ -32,10 +34,12 @@ Every `/worker` invocation runs these on entry, regardless of caller. Any failur
 | Poll window                        | 10 min      |
 | Run cooldown per ticket            | 15 min      |
 | Max actions per `/worker` run      | 20          |
-| Discord ping on `Intervention`     | once / 24h  |
+| Discord ping on `Intervention`     | once per daily cron fire (governed by Hermes' cron schedule, not skill logic) |
 | Reasoner subprocess timeout        | 20 min      |
 | Coder subprocess timeout           | 60 min      |
 | Tester subprocess timeout          | 30 min      |
 | `/tester` per-command wall-clock   | 5 min       |
 
-Subprocess budget caps and invocation flags live in `delegation-contract.md`. Per-tick selection logic lives in `skills/poller/SKILL.md`. Per-ticket loop logic and action handlers live in `skills/worker/SKILL.md`.
+Subprocess budget caps and invocation flags live in `delegation-contract.md`. Per-tick selection logic lives in `skills/poller/SKILL.md`. Per-ticket loop logic and action handlers live in `skills/worker/SKILL.md`. Daily Intervention pings live in `skills/intervention-pinger/SKILL.md`.
+
+Durable state for cooldowns, active-run locks, and run history lives at `~/.hermes/run-table.json`, owned by `/worker`. `/poller` reads it for its filter pass; `/intervention-pinger` doesn't touch it. See `skills/worker/SKILL.md` § State for the canonical schema and read-modify-write protocol.
