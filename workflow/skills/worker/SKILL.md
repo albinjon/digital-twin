@@ -5,9 +5,7 @@ description: Drive one Linear ticket through its full lifecycle autonomously. A 
 
 # worker (Hermes-side orchestrator)
 
-The entire workflow brain, in one skill. Worker reads ticket + PR state, asks a reasoner subprocess for the next action, applies it, and loops.
-
-There is no per-state dispatch table, no `Planned` or `Tests Passed` label gates, no per-skill split. The reasoner sees the full ticket + PR + action history each iteration and decides one next action at a time.
+Worker reads ticket + PR state, asks a delegated reasoner subprocess for one next action (with full action history each call), applies it, and loops.
 
 ## Invocation
 
@@ -16,13 +14,11 @@ Two entry paths reach the same loop:
 - **Cron-driven** — `/poller` (see `../poller/SKILL.md`) selects one qualifying ticket per 5-min tick and spawns `/worker <TICKET-KEY>` fire-and-forget.
 - **Manual** — `/worker <TICKET-KEY>` typed in an interactive Claude Code session (or fired by another agent / script). Same loop, same pre-checks. No bypass flags. To re-run a ticket in cooldown or with the `Human` label set, clear the state manually first — friction here is intentional.
 
-Argument: a single Linear ticket key (e.g. `TEAM-123`). If the key doesn't resolve, exit immediately with `"ticket <key> not found"`.
-
-Pre-checks run inside the skill on every invocation, regardless of caller. `/poller` filters tickets before spawning, but `/worker` doesn't trust that — it re-checks on entry.
+Argument: a single Linear ticket key (e.g. `TEAM-123`). Pre-checks run on entry regardless of caller — `/poller` filters, but `/worker` re-checks.
 
 ## 1. Entry
 
-Worker is invoked for a single ticket key. Before entering the loop:
+Before entering the loop:
 
 - Validate the ticket key exists in Linear. If not, exit with `"ticket <key> not found"`.
 - Run universal pre-checks. Any failure → exit with a one-line reason (`"skipped: Human label is set"`, `"skipped: cooldown active, X minutes remaining"`, `"skipped: another /worker run is in progress"`).
@@ -31,7 +27,7 @@ Worker is invoked for a single ticket key. Before entering the loop:
   - `action_log = []` — every action emitted this run + result + cost
   - `iteration = 0`
 
-**Hard gate.** After pre-checks pass and state is initialized, do not take any further action outside the loop. Enter step 2 immediately. Reading source files, drafting changes, sketching plans in your head — none of that happens here. The loop is the only place work gets decided and dispatched.
+**Hard gate.** After pre-checks pass and state is initialized, enter step 2 immediately — no source reads, no plan-drafting, no thinking-ahead outside the loop. The loop is the only place work gets decided and dispatched.
 
 ## 2. Loop
 
@@ -88,7 +84,7 @@ The bundle sent to the decide subprocess each iteration:
 }
 ```
 
-**`repo_context` is metadata only.** You read `AGENTS.md` / `CLAUDE.md` if present at the repo root and an `ls` of the top level — nothing more. **The orchestrator does not read source files in the target repo.** If the subprocess needs to ground its decision in code (e.g. plannability requires looking at how labels are rendered), it reads source files itself via `--allowedTools Read`.
+**`repo_context` is metadata only** — `AGENTS.md` / `CLAUDE.md` text plus a top-level `ls`, nothing more. If the subprocess needs to ground its decision in source, it reads files itself via `--allowedTools Read`.
 
 ## 3. Action handlers (`apply()`)
 
@@ -131,7 +127,7 @@ Args: `{ branch_name: string, task_spec: string }`.
 Args: `{ task_spec: string, resolve_thread_ids?: string[] }`.
 - Worktree on the existing PR branch (`git worktree add <wt> origin/<branch>`).
 - Invoke claude-code in **coder mode** with `{ mode: "fix", ticket, pr, worktree, task_spec, repo_root }`.
-- On success: push commits; for each `thread_id` in `resolve_thread_ids` that the subprocess confirmed it addressed (in `addressed_thread_ids`), mark the GitHub review thread resolved with optional `"addressed in <sha>"` reply; remove `Tests Passed`-style markers if any are still around (cleanup for legacy state — generally a no-op post-Phase-4). Clean up worktree.
+- On success: push commits; for each `thread_id` in `resolve_thread_ids` that the subprocess confirmed it addressed (in `addressed_thread_ids`), mark the GitHub review thread resolved with optional `"addressed in <sha>"` reply. Clean up worktree.
 - Result includes `{ commit_sha, addressed_thread_ids, summary, unaddressed_thread_ids }`.
 - On `blocked` / error: same pattern as `start_implementation`.
 
@@ -179,7 +175,7 @@ On every exit path:
 
 ## Safety nets
 
-- `MAX_ITER` default: **20** actions per run. On hit: Hermes force-adds the `Human` label + posts a comment. This replaces every form of bouncing detection — simpler and more general.
+- `MAX_ITER` default: **20** actions per run. On hit: Hermes force-adds the `Human` label + posts a comment.
 - Run cooldown: 15 min between worker runs for the same ticket.
 - Active-run lock: prevents double-entry. TTL of 6h (refreshed each iteration) handles Hermes crashes.
 - Per-subprocess timeouts: 20 min reasoner, 60 min coder, 30 min tester (see `../../delegation-contract.md`). On timeout, Hermes treats it as `request_intervention` with a timeout comment.
@@ -192,8 +188,8 @@ On every exit path:
 
 ## Don't
 
-- **Don't decide.** Your job is read state → bundle → invoke the decide subprocess → apply the result. The subprocess decides; you dispatch. If something feels like a decision — "should I refine this?", "is this implementable?", "are these review concerns substantive?", "is this ticket trivial enough to skip the subprocess?" — that's the subprocess's job. You do not have the rubric to make those calls and you will not find it elsewhere in this skill. The rubric lives in `./delegated-decide.md`, which is read by the subprocess, not by you.
-- **Don't read source files in the target repo.** Hermes reads Linear/GitHub state and the shallow `repo_context` metadata (`AGENTS.md` / `CLAUDE.md` + top-level `ls`) — nothing more. If you find yourself opening a source file in the target repo, you're reasoning, which means you're deciding, which means you've drifted out of role. The subprocess reads source files itself via `--allowedTools Read` when its decision needs them.
+- **Don't decide.** Your job is read state → bundle → invoke the decide subprocess → apply the result. If something feels like a decision — "should I refine this?", "is this implementable?", "are these review concerns substantive?", "is this ticket trivial enough to skip the subprocess?" — that's the subprocess's job. The rubric lives in `./delegated-decide.md`.
+- **Don't read source files in the target repo.** Opening a source file is reasoning, which is deciding, which is out of role. The subprocess reads source files itself via `--allowedTools Read` when its decision needs them.
 - Don't implement anything directly. You are the orchestrator. Creating branches, pushing code, and all GitHub/Linear mutations must flow through the loop's `apply()` handlers. If the ticket looks trivial, that's irrelevant — trivial tickets go through the loop too.
 - Don't apply two actions per iteration. The reasoner sees one result at a time.
 - Don't second-guess the reasoner's action. If you (the orchestrator) think the action is wrong, the reasoner's behavior is what should be fixed (in `./delegated-decide.md`), not the dispatcher.

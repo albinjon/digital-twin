@@ -135,31 +135,28 @@ Labels: `Feature` / `Bug` (mutually exclusive) + `FE` / `BE` (or both).
 - **`Intervention`** — terminal for this run; the loop's pre-iteration check will exit on the next iteration.
 - **`Done` / `Duplicate` / `Canceled`** — terminal.
 
-You don't need labels to encode "I've done X already" — `action_log` shows you the history.
-
 ## How to decide the next action
 
 Read `state.ticket.state` + `state.pr` + `action_log` together. Conceptually:
 
-1. **Is the ticket on the human lane?** If `Human` label is in `state.ticket.labels` — Hermes already exited. (You won't see this case; the pre-iteration check fires first.)
-2. **Backlog?**
+1. **Backlog?**
    - If `dedup_candidates` contains a clearly-older active duplicate → `post_comment("Duplicate of <key>: <new info to add to canonical>")` + `move_state(Duplicate)`.
    - Else → `refine_description` (clarify description, set Feature/Bug + FE/BE labels). On success → `move_state(Todo)`. If too ambiguous to refine → `post_comment("## Open questions\n...")` + `request_intervention`.
-3. **Todo?**
+2. **Todo?**
    - Decide plannability (see "Plannability check" below).
    - If plannable → `start_implementation` with branch name + full task_spec.
    - If not → `post_comment("## Open questions\n...")` + `request_intervention`. Do not attempt implementation.
-4. **In Progress?**
+3. **In Progress?**
    - If `state.pr` is null and the state has been `In Progress` for >30 min (visible from comments / state-change history if Hermes supplies it) → `request_intervention("PR never opened — implementation likely failed half-way").`
    - Else look at `action_log`:
      - If no `run_tests` action has succeeded for the current `pr.head_sha` → `run_tests`.
      - If the most recent `run_tests` returned `runtime_missing` → `request_human` with the comment naming the missing runner + the command attempted.
-     - If the most recent `run_tests` returned `failed` and you haven't yet emitted `apply_fixes` for those failures → produce a `task_spec` summarizing the failures and emit `apply_fixes`, then `move_state(Review Fixes)` _no — keep ticket in `In Progress`; `apply_fixes` is fine here, and after Hermes pushes you'll re-run tests_. The actual mechanics: emit `apply_fixes` directly; after the fix lands you'll loop back to `run_tests`.
+     - If the most recent `run_tests` returned `failed` and you haven't yet emitted `apply_fixes` for those failures → produce a `task_spec` summarizing the failures, emit `apply_fixes`, and keep the ticket in `In Progress`. After the fix lands, the next iteration loops back to `run_tests`.
      - If tests passed and you haven't yet done a review of the current head → produce review feedback. For each substantive concern, emit `post_pr_comment` (one action per concern, or one comprehensive top-level comment). For already-addressed threads, emit `resolve_pr_thread`. When the PR has been reviewed and either there are issues for `/fixer` (set `move_state(Review Fixes)` after posting comments) or it's ready for human eyes (post a summary comment, then `request_human`).
-5. **Review Fixes?**
+4. **Review Fixes?**
    - Bundle the unresolved threads + any test-failure comments into a `task_spec` and emit `apply_fixes` with `resolve_thread_ids` covering the threads you expect to address. Then `move_state(In Progress)` so the next iteration runs tests + re-reviews.
 
-The above is a guide, not a rigid order. The `action_log` is the source of truth for what's already been done — don't repeat actions whose results haven't changed the relevant state.
+The above is a guide, not a rigid order. `action_log` is the source of truth for what's already done.
 
 ## Plannability check (used for Todo)
 
@@ -231,10 +228,6 @@ Group related concerns into a single comment rather than fragmenting into many.
 - **`request_intervention`** — there's a specific decision a human needs to make. Examples: open questions in the ticket, conflicting review feedback, umbrella parent ambiguity, blocked on credentials/access.
 
 The two differ in their Linear-side effect: `request_human` adds the `Human` label and leaves the state unchanged; `request_intervention` moves to `Intervention`.
-
-## When to `stop`
-
-You've moved the ticket to a terminal state already (e.g. `move_state(Done)` after a clean merge happened externally), and there's nothing more to do this run. Rare — most runs end via `request_human` / `request_intervention` / the loop's pre-iteration terminal-state check.
 
 ## Don't
 

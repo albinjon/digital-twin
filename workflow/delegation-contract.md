@@ -13,10 +13,11 @@ Used by `refine`, `review`, `router`, and the grouping phase of `fixer`. Read-on
 ```
 claude -p "$INPUT" \
   --bare \
-  --model opus --effort xhigh \
+  --model opus --effort high \
   --output-format json --json-schema "$SCHEMA" \
   --allowedTools Read \
-  --max-budget-usd 5 \
+  --max-budget-usd 10 \
+  --max-turns 100 \
   --fallback-model haiku
 ```
 
@@ -24,7 +25,7 @@ claude -p "$INPUT" \
 - `$SCHEMA` is the skill-specific JSON schema declared in the skill's `delegated.md`.
 - `--bare` skips hook/plugin/MCP discovery and CLAUDE.md loading for fast, predictable startup. Requires `ANTHROPIC_API_KEY`.
 - `--allowedTools Read` lets the subprocess open repo files for grounding, but blocks Edit/Write/Bash.
-- No `--max-turns` — the budget cap is the only ceiling.
+- Dual ceiling: `--max-budget-usd 10` caps spend, `--max-turns 100` caps iteration count.
 
 ---
 
@@ -34,11 +35,12 @@ Used by `implement` and the fix-applying phase of `fixer`. Operates inside a Her
 
 ```
 claude -p "$TASK_SPEC" \
-  --model opus --effort xhigh \
+  --model opus --effort high \
   --output-format json --json-schema "$SCHEMA" \
   --permission-mode auto \
   --add-dir "$WORKTREE" \
-  --max-budget-usd 10 \
+  --max-budget-usd 25 \
+  --max-turns 100 \
   --fallback-model haiku
 ```
 
@@ -46,7 +48,7 @@ claude -p "$TASK_SPEC" \
 - `$WORKTREE` is an absolute path to a worktree Hermes prepared (already checked out on the right branch). The subprocess does all file edits and commits inside this worktree.
 - `--permission-mode auto` lets the auto-mode classifier handle approvals so the subprocess can shell out for tests, linters, formatters, etc.
 - No `--allowedTools` cap — coder mode needs the full default tool set.
-- No `--max-turns` — the budget cap is the only ceiling.
+- Dual ceiling: `--max-budget-usd 25` caps spend, `--max-turns 100` caps iteration count.
 
 ---
 
@@ -57,7 +59,7 @@ Used by `tester`. Like coder mode but the subprocess can read and shell out, not
 ```
 claude -p "$TASK_SPEC" \
   --bare \
-  --model opus --effort xhigh \
+  --model opus --effort high \
   --output-format json --json-schema "$SCHEMA" \
   --permission-mode auto \
   --allowedTools Read,Bash \
