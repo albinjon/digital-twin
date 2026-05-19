@@ -37,10 +37,10 @@ Tickets failing any check are skipped (not logged loudly — this is the common 
 
 Two-tier priority:
 
-1. **Tier 1 — `Todo`.** Among qualifying `Todo` tickets, pick the one with the **earliest `created_at`** (FIFO — the longest-waiting Todo wins).
-2. **Tier 2 — `Backlog`.** Only consulted if tier 1 is empty. Same FIFO rule: earliest `created_at` wins.
+1. **Tier 1 — `Todo`.** Among qualifying `Todo` tickets, pick the one with the **latest `created_at`** (LIFO — the most recently created Todo wins).
+2. **Tier 2 — `Backlog`.** Only consulted if tier 1 is empty. Same LIFO rule: latest `created_at` wins.
 
-A `Todo` ticket always beats every `Backlog` ticket, even if the `Backlog` ticket is older.
+A `Todo` ticket always beats every `Backlog` ticket, even if the `Backlog` ticket is newer.
 
 If neither tier has a qualifying candidate, the tick does nothing for this step.
 

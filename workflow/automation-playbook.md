@@ -25,7 +25,7 @@ Every `/worker` invocation runs these on entry, regardless of caller. Any failur
 3. **Run cooldown** — `/worker` ran on this ticket in the last 15 min.
 4. **Active-run lock** — a `/worker` run is currently in progress on this ticket.
 
-`/poller` applies the same filter when selecting a candidate, plus a stricter state rule: it only considers tickets in `Todo` or `Backlog`, with `Todo` taking priority and `created_at` ascending as the within-tier tiebreaker. Tickets in `In Progress`, `Review Fixes`, or any other state are not picked by `/poller` — they're either inside a live `/worker` run or waiting for human nudge. `Intervention` tickets are handled separately by `/intervention-pinger` (daily cron).
+`/poller` applies the same filter when selecting a candidate, plus a stricter state rule: it only considers tickets in `Todo` or `Backlog`, with `Todo` taking priority and `created_at` descending as the within-tier tiebreaker (newest first). Tickets in `In Progress`, `Review Fixes`, or any other state are not picked by `/poller` — they're either inside a live `/worker` run or waiting for human nudge. `Intervention` tickets are handled separately by `/intervention-pinger` (daily cron).
 
 ---
 
@@ -34,7 +34,7 @@ Every `/worker` invocation runs these on entry, regardless of caller. Any failur
 | Lever                              | Default     |
 | ---------------------------------- | ----------- |
 | Cron interval                      | 5 min       |
-| Poller candidate states            | `Todo` (tier 1) → `Backlog` (tier 2); FIFO by `created_at` within a tier |
+| Poller candidate states            | `Todo` (tier 1) → `Backlog` (tier 2); LIFO by `created_at` within a tier (newest first) |
 | Run cooldown per ticket            | 15 min      |
 | Max actions per `/worker` run      | 20          |
 | Discord ping on `Intervention`     | once per daily cron fire (governed by Hermes' cron schedule, not skill logic) |
