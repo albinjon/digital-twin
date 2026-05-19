@@ -43,13 +43,19 @@ You have no Linear, GitHub, Discord, or repo-write access. You can read the bund
   "action_log": [
     { "iteration": 1, "action": { "kind": "...", "args": {...} }, "result": {...}, "cost_usd": 0.0 }
   ],
-  "repo_context": "..."
+  "repo_context": {
+    "repo_path": "/abs/path/to/repo",
+    "agents_md_text": "...",        // optional — contents of AGENTS.md or CLAUDE.md at the repo root, if present
+    "top_level_files": ["..."]      // optional — `ls` of the repo root
+  }
 }
 ```
 
 `dedup_candidates` is provided when the ticket is in `Backlog` (same-project siblings, for dedup screening). Empty otherwise.
 
 `pr` is `null` when the ticket has no linked active PR.
+
+**`repo_context` is metadata only.** The orchestrator deliberately did not read source files — that's your job. When your decision needs grounding in code (e.g. plannability for "where do labels render"), read files directly from `repo_context.repo_path` using your `--allowedTools Read` access.
 
 ## Output schema
 

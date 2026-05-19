@@ -71,6 +71,25 @@ post_linear_comment(ticket,
 exit("max-iter")
 ```
 
+### Bundle shape
+
+The bundle sent to the decide subprocess each iteration:
+
+```
+{
+  kind: "decide",
+  state: <full Linear/GitHub state read via MCPs>,
+  action_log: <list of prior iterations' { action, result, cost_usd }>,
+  repo_context: {
+    repo_path: string,            // absolute path to the repo on disk
+    agents_md_text?: string,      // contents of AGENTS.md or CLAUDE.md at repo root, if present
+    top_level_files?: string[]    // `ls` of the repo root
+  }
+}
+```
+
+**`repo_context` is metadata only.** You read `AGENTS.md` / `CLAUDE.md` if present at the repo root and an `ls` of the top level — nothing more. **The orchestrator does not read source files in the target repo.** If the subprocess needs to ground its decision in code (e.g. plannability requires looking at how labels are rendered), it reads source files itself via `--allowedTools Read`.
+
 ## 3. Action handlers (`apply()`)
 
 Hermes implements one handler per action `kind`. Each handler returns a `result` that goes into `action_log` for the next iteration's bundle.
@@ -173,7 +192,9 @@ On every exit path:
 
 ## Don't
 
-- Don't implement anything directly. You are the orchestrator. Reading source files for implementation purposes, creating branches, pushing code, and all GitHub/Linear mutations must flow through the loop's `apply()` handlers. If the ticket looks trivial, that's irrelevant — trivial tickets go through the loop too.
+- **Don't decide.** Your job is read state → bundle → invoke the decide subprocess → apply the result. The subprocess decides; you dispatch. If something feels like a decision — "should I refine this?", "is this implementable?", "are these review concerns substantive?", "is this ticket trivial enough to skip the subprocess?" — that's the subprocess's job. You do not have the rubric to make those calls and you will not find it elsewhere in this skill. The rubric lives in `./delegated-decide.md`, which is read by the subprocess, not by you.
+- **Don't read source files in the target repo.** Hermes reads Linear/GitHub state and the shallow `repo_context` metadata (`AGENTS.md` / `CLAUDE.md` + top-level `ls`) — nothing more. If you find yourself opening a source file in the target repo, you're reasoning, which means you're deciding, which means you've drifted out of role. The subprocess reads source files itself via `--allowedTools Read` when its decision needs them.
+- Don't implement anything directly. You are the orchestrator. Creating branches, pushing code, and all GitHub/Linear mutations must flow through the loop's `apply()` handlers. If the ticket looks trivial, that's irrelevant — trivial tickets go through the loop too.
 - Don't apply two actions per iteration. The reasoner sees one result at a time.
 - Don't second-guess the reasoner's action. If you (the orchestrator) think the action is wrong, the reasoner's behavior is what should be fixed (in `./delegated-decide.md`), not the dispatcher.
 - Don't strip the `Human` label from worker. Once set, only a human removes it.
