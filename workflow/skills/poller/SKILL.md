@@ -15,12 +15,15 @@ Intervention Discord pings are handled by a separate daily cron, `/intervention-
 
 ### Pull candidates
 
-Fetch from Linear: every ticket touched in the last 10 minutes. "Touched" = any state change, label change, comment, or description edit. The poll window is 2× the cron interval to catch events that land between ticks.
+Hermes has three Linear org MCPs connected. Within those orgs we only act on three teams: `VER` (Verkis), `LAV` (Ledger / Lavora), and `ZBS` (ZBS-Web). The orgs contain other teams too — those are out of scope.
+
+Fetch from each connected Linear MCP: tickets touched in the last 10 minutes belonging to teams `VER`, `LAV`, or `ZBS`. Scope the query by team at the MCP layer when possible; whatever the MCP can't filter, drop in the qualification step below. "Touched" = any state change, label change, comment, or description edit. The poll window is 2× the cron interval to catch events that land between ticks.
 
 ### Filter to qualifying
 
 A ticket qualifies if **all** are true:
 
+- **Ticket key starts with `VER-`, `LAV-`, or `ZBS-`.** Mandatory prefix check, applied regardless of which org MCP surfaced the ticket. The MCP returning a ticket is not authorization to act on it. Any other prefix → drop silently. Never expand this allowlist inline; it lives in this skill text by design.
 - **Not in a terminal Linear state.** Excludes `Done`, `Duplicate`, `Canceled`, `Intervention`. (Intervention tickets are pinged daily by `/intervention-pinger`, not picked up here.)
 - **No `Human` label.** Human-lane tickets are off-limits to automation.
 - **No active-run lock for `/worker` on this ticket.** A previous tick's worker is still running; let it finish. Source: `active_runs["<ticket>:worker"]` in `~/.hermes/run-table.json` (entries with `expires_at` in the past are treated as released; see worker skill § State).
@@ -50,6 +53,7 @@ If Hermes wants to cap concurrent worker runs globally (rate-limit / cost-contro
 
 ## Don't
 
+- **Don't fetch or spawn for tickets outside `VER` / `LAV` / `ZBS`.** The connected Linear org MCPs contain other teams; those are out of scope. Other team keys must never reach `/worker`.
 - Don't fire `/worker` on more than one ticket per tick. The user's constraint: one qualifying ticket per poll.
 - Don't wait for `/worker` to complete. The tick must be short.
 - Don't write to `~/.hermes/run-table.json`. The run-table is owned by `/worker`; `/poller` only reads it for the filter pass.

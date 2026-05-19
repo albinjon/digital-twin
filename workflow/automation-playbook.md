@@ -1,5 +1,7 @@
 # Automation playbook — overview
 
+> **Allowed Linear teams: `VER`, `LAV`, `ZBS`** (Verkis, Ledger / Lavora, ZBS-Web). Hermes has three Linear org MCPs connected, and each of those orgs contains teams *beyond* the three we want to touch — so "the MCP returned a ticket" is **not** sufficient authorization to act on it. Every skill in this playbook — `/poller`, `/worker`, `/intervention-pinger` — must drop, skip, or refuse any ticket whose key prefix is not `VER-`, `LAV-`, or `ZBS-`, regardless of which org MCP surfaced it. Each skill enforces this independently; the allowlist is duplicated by design.
+
 The Linear-driven automation has three entry points, all packaged as skills under `skills/`:
 
 - **`/poller`** — Hermes' cron fires this every 5 minutes. It picks at most one qualifying touched ticket and spawns `/worker` on it (fire-and-forget). See `skills/poller/SKILL.md`.
@@ -18,9 +20,10 @@ The delegation contract (`delegation-contract.md`) defines the three subprocess 
 
 Every `/worker` invocation runs these on entry, regardless of caller. Any failure → exit with a one-line reason.
 
-1. **`Human` label** — ticket is in the human lane; never auto-execute.
-2. **Run cooldown** — `/worker` ran on this ticket in the last 15 min.
-3. **Active-run lock** — a `/worker` run is currently in progress on this ticket.
+1. **Allowed team** — ticket key starts with `VER-`, `LAV-`, or `ZBS-`. Otherwise exit silently: no Linear writes, no Discord pings, nothing.
+2. **`Human` label** — ticket is in the human lane; never auto-execute.
+3. **Run cooldown** — `/worker` ran on this ticket in the last 15 min.
+4. **Active-run lock** — a `/worker` run is currently in progress on this ticket.
 
 `/poller` applies the same filter when selecting a candidate, plus an additional one: the ticket must not be in a terminal state (`Done` / `Duplicate` / `Canceled` / `Intervention`). `Intervention` tickets are handled separately by `/intervention-pinger` (daily cron).
 
