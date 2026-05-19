@@ -44,11 +44,27 @@ Treat duplicate or overlapping comments as one underlying concern.
 - comment reveals a real bug, regression, missing test, weak abstraction, or maintainability problem → address it
 - trivial / stylistic / low-value comments → don't make a new round of changes for these
 
-### 4. Implement on the existing branch
+### 4. Implement on the existing branch in an isolated worktree
 
+Work in a **git worktree** on the existing PR branch — same principle as `implement`: keep the main repo's working directory clean so concurrent workflows (or in-flight work) don't collide.
+
+Mechanics:
+
+```
+git fetch origin <branch-name>
+# if a worktree for this branch already exists from /implement, cd in and:
+#   git pull --ff-only
+# otherwise create one:
+git worktree add ../<repo>-worktrees/<branch-name> origin/<branch-name>
+cd ../<repo>-worktrees/<branch-name>
+```
+
+Then:
 - one coherent implementation pass per underlying concern
 - on the **existing PR branch** — don't create a new branch, don't open a new PR
 - continue the existing PR unless blocked
+
+Worktree cleanup is the post-merge / post-close job, not fixer's responsibility.
 
 ### 5. Resolve, push, and re-enter the review loop
 
@@ -75,6 +91,7 @@ If blocked at any point:
 - Don't resolve a thread you didn't actually address. Resolution is a claim that the underlying concern is gone; only make it when it's true. Leaving a thread open is the honest call when the fix is partial, deferred, or subjective.
 - Don't implement the same underlying fix multiple times.
 - Don't create a new branch or a new PR.
+- Don't work in the main repo's checked-out directory — use a worktree on the PR branch. Concurrent workflows depend on it.
 - Don't proceed when feedback is contradictory, product-driven, or insufficiently clear — route to Intervention.
 
 Treat the move back to `In Progress` as re-entering the PR review loop. The `review` skill picks it back up — and now sees only the threads that genuinely still need attention, which is what makes Outcome 2 (Human handoff) reachable when the implementation is actually complete.

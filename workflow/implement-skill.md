@@ -57,9 +57,23 @@ Stop and route to Intervention with a comment if any of these is missing:
 
 Don't continue implementation after routing to Intervention.
 
-### 4. Create the branch
+### 4. Create the branch in an isolated worktree
 
-Branch names tie work to its Linear ticket. Default format:
+Always branch from a fresh `main`, and work in a **git worktree** so the main repo's working directory stays clean. This matters because multiple workflows (or your own in-flight work) may share the same clone; doing every implementation in its own worktree means they don't collide on the index, the staging area, or the checked-out HEAD.
+
+Mechanics:
+
+```
+git fetch origin main
+git worktree add ../<repo>-worktrees/<branch-name> -b <branch-name> origin/main
+cd ../<repo>-worktrees/<branch-name>
+```
+
+All subsequent file changes happen inside that worktree. If the host has a different worktree-location convention configured, follow that — the constraint is that work happens **not** in the main repo's checked-out working directory, and the branch starts from the latest `origin/main` (never from whatever happened to be checked out locally).
+
+Worktree cleanup (`git worktree remove ...`) is the post-merge / post-close job, not implement's responsibility.
+
+Branch naming format:
 
 ```
 <type>/<linear-key-lowercased>-<short-slug>
@@ -132,3 +146,5 @@ General hierarchy rules:
 - Don't create a branch, open a PR, or write implementation code until the open-question and readiness checks pass.
 - Don't implement umbrella parents when the real work is in subtickets.
 - Don't leave the work in a draft PR — the next stage depends on a non-draft PR and `In Progress` status.
+- Don't branch from whatever happens to be checked out locally — always start from `origin/main`. Stale or unrelated base commits make the diff hard to review.
+- Don't work in the main repo's checked-out directory — use a worktree. Concurrent workflows depend on it.
