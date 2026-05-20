@@ -46,9 +46,16 @@ If neither tier has a qualifying candidate, the tick does nothing for this step.
 
 ### Fire `/worker`
 
-Spawn `/worker <TICKET-KEY>` as a separate process. **Fire-and-forget** — do not wait for it. `/poller` exits immediately after spawning so the tick stays short. The worker's own pre-checks will run on entry (redundant safety; harmless).
+Spawn `/worker <TICKET-KEY>` as a one-shot cron job. Fire-and-forget — `/poller` exits immediately after creating the job.
 
-If no ticket qualifies, do nothing for this step.
+**Exact spawn call:**
+```python
+cronjob(action="create", name="worker-<TICKET-KEY>", skills=["worker"], prompt="<TICKET-KEY>", schedule="5m", repeat=1, deliver="origin")
+```
+
+Do **not** use `terminal()` to spawn — background processes from inside a cron session exit silently without running. The `cronjob` approach is the only working pattern.
+
+If no ticket qualifies, do nothing.
 
 ## 2. Exit
 
