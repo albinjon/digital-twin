@@ -78,15 +78,56 @@ Pick the first match. Record in `test_command`.
 
 If none match → `outcome: "runtime_missing"` with `runtime_reason: "Couldn't identify a test runner — no Makefile target, package.json script, pytest config, Cargo.toml, or go.mod found"`.
 
-### 3. Run the tests
+### 3. Prepare the environment
+
+A fresh worktree has source files only. Bootstrap whatever the chosen test command needs before running it. Each step is best-effort and timeboxed — on failure, set `outcome: "runtime_missing"` with a specific `runtime_reason` and stop.
+
+Apply only the steps that match what you found in §2 / a quick `ls` of the worktree root.
+
+**a. Project dependencies**
+
+- `package.json` + `pnpm-lock.yaml` → `pnpm install --frozen-lockfile`
+- `package.json` + `yarn.lock` → `yarn install --frozen-lockfile`
+- `package.json` + `package-lock.json` → `npm ci`
+- `pyproject.toml` with poetry → `poetry install --no-interaction`
+- `pyproject.toml` with uv → `uv sync --frozen`
+- `requirements*.txt` → `pip install -r requirements.txt` (and `-dev` if present)
+- `Cargo.toml`, `go.mod` → no install step needed; the runner fetches deps itself
+
+Time budget: 5 min. Exceeded → `runtime_missing`, reason `"Dependency install (<cmd>) exceeded 5-minute timeout"`.
+
+**b. ORM / codegen**
+
+After deps install, run codegen if the project uses it:
+
+- Prisma (`prisma/schema.prisma` exists) → `npx prisma generate`
+- Drizzle (`drizzle.config.{ts,js}` exists) → `npx drizzle-kit generate` (only if the `package.json` `scripts` block doesn't already wire this into `test` / `pretest`)
+- sqlc (`sqlc.yaml` exists) → `sqlc generate`
+- Protobuf with a `buf.yaml` and `buf.gen.yaml` → `buf generate`
+
+Skip a step if its output already exists and the source files are older. Don't try to be clever — when in doubt, run it. Codegen is cheap.
+
+**c. Infrastructure (E2E only)**
+
+If the test command you picked is clearly an E2E suite (script name contains `e2e` / `integration`, or the worktree has a top-level `docker-compose.yml` / `compose.yml` whose services include `postgres` / `mysql` / `redis`), bring infra up before running tests:
+
+- `docker compose up -d` (or the file the repo points at via a `Makefile` target like `make db-up`).
+- Wait for services to be healthy. Prefer the project's own readiness check if one exists (a `wait-for-it.sh`, a `make db-ready` target). Otherwise `docker compose ps` until status is `healthy` / `running`, capped at 90s. Exceeded → `runtime_missing`, `"Compose services failed to become healthy in 90s"`.
+- Apply migrations if the project has a migrate command and the runner doesn't already do so itself (`npx prisma migrate deploy`, `npm run db:migrate`, `make db-migrate`).
+
+Leave the stack running. Don't tear it down — the worker will discard the worktree after this call returns, but `docker compose` resources persist on the host and a sibling worker invocation may reuse them.
+
+Don't start infra unless the test command actually needs it. Unit-only suites should not pay the Docker tax.
+
+### 4. Run the tests
 
 Execute the command from the worktree root. Capture stdout + stderr.
 
 **Time budget**: if the command runs longer than 5 min wall-clock, kill it and report `outcome: "runtime_missing"` with `runtime_reason: "Test command exceeded 5-minute timeout"`.
 
-### 4. Classify the result
+### 5. Classify the result
 
-**Runtime missing.** If the runner binary is absent (`command not found`, `executable file not found`, etc.) or reports its own missing dependency (e.g. `ModuleNotFoundError: No module named 'pytest'`) → `outcome: "runtime_missing"` with the specific missing piece in `runtime_reason`.
+**Runtime missing.** If the runner binary is absent (`command not found`, `executable file not found`, etc.) or reports its own missing dependency (e.g. `ModuleNotFoundError: No module named 'pytest'`) **after a successful bootstrap in §3** → `outcome: "runtime_missing"` with the specific missing piece in `runtime_reason`. Bootstrap failures (deps, codegen, infra) also flow through this exit with the reason set in §3.
 
 This is distinct from tests **failing**. A failed test = runner ran. A missing runtime = runner couldn't start. If unclear, lean `runtime_missing` — human handoff is cheaper than chasing phantom failures.
 
@@ -98,7 +139,7 @@ This is distinct from tests **failing**. A failed test = runner ran. A missing r
 - `file_path` — relative to worktree root.
 - `line` — best-effort. Omit if not available.
 
-### 5. Summarize
+### 6. Summarize
 
 One short plain-English sentence in `summary`:
 - `"Ran `pytest` — 142 passed, 0 failed."`
@@ -108,7 +149,7 @@ One short plain-English sentence in `summary`:
 ## Don't
 
 - **Don't modify any file.** Allowed tools are `Read,Bash`; respect that.
-- **Don't install missing runtimes.** Missing → `runtime_missing`.
+- **Don't install system packages, language runtimes, or Docker.** § 3 covers project-level setup (deps, codegen, `docker compose up`); anything beyond that → `runtime_missing`.
 - **Don't fix failing tests.** Reporting is the job.
 - **Don't fabricate failure detail.** If the framework didn't emit a line number, omit it.
 - **Don't run a single test file in isolation.** Always the repo-wide command — partial runs give false-pass signals.
