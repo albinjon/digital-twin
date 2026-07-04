@@ -5,12 +5,12 @@ The single source of truth for the team allowlist and each team's bindings. Ever
 and reads that allowlist from this file instead of inlining it. Onboarding a team is one row here;
 no skill prose changes.
 
-| Prefix  | Team name       | Linear org MCP | Target GitHub repo                                | Workflow |
-| ------- | --------------- | -------------- | ------------------------------------------------- | -------- |
-| `VER`   | Verkis          | `linear-skry`  | `skry-ab/verkis`                                  | dev      |
-| `LAV`   | Ledger / Lavora | `<fill>`       | `Lavora-AB/Ledger`                                | dev      |
-| `ZBS`   | ZBS-Web         | `<fill>`       | `Zenbuddhistiska-Samfundet/web`                   | dev      |
-| `APPAI` | Appraisal       | `linear-skry`  | `skry-ab/appraisal`                               | dev      |
+| Prefix  | Team name       | Linear org MCP  | Target GitHub repo              | Workflow |
+| ------- | --------------- | --------------- | ------------------------------- | -------- |
+| `VER`   | Verkis          | `linear-skry`   | `skry-ab/verkis`                | dev      |
+| `LAV`   | Ledger / Lavora | `linear-lavora` | `Lavora-AB/Ledger`              | dev      |
+| `ZBS`   | ZBS-Web         | `linear-zbs`    | `Zenbuddhistiska-Samfundet/web` | dev      |
+| `APPAI` | Appraisal       | `linear-skry`   | `skry-ab/appraisal`             | dev      |
 
 ## Rules
 
