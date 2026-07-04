@@ -1,7 +1,7 @@
 # Team registry — which Linear teams this automation serves
 
 The single source of truth for the team allowlist and each team's bindings. Every skill
-(`/poller`, `/worker`, `/intervention-pinger`) authorizes work by the ticket key's team prefix,
+(`/poller`, `/worker`) authorizes work by the ticket key's team prefix,
 and reads that allowlist from this file instead of inlining it. Onboarding a team is one row here;
 no skill prose changes.
 

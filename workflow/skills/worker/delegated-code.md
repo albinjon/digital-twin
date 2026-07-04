@@ -118,7 +118,7 @@ Set `blocked: true` (and don't commit) if:
 - You'd have to invent acceptance criteria.
 - Required tooling, credentials, or context to safely make the change is missing.
 
-`blocked_reason` should name exactly what's missing so the decide reasoner can emit `request_intervention` with a useful comment.
+`blocked_reason` should name exactly what's missing so the decide reasoner can emit `request_human` with a useful comment.
 
 ## Don't
 

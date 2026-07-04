@@ -90,13 +90,13 @@ The subprocess always returns JSON. The exact schema is skill-specific (see each
 
 - **Success** — schema matches what the skill's `delegated.md` declares; Hermes applies it as-is. **Hermes trusts the subprocess and does not validate the schema** beyond JSON-parseability. The schema is enforced at generation time by `--json-schema`; if `claude -p` returns malformed JSON anyway, treat it as failure.
 
-- **Error** — the subprocess returns `{ "error": string, "reason": string }`. Hermes routes the ticket to Intervention with `reason` as the comment and stops.
+- **Error** — the subprocess returns `{ "error": string, "reason": string }`. Hermes hands the ticket off to a human (adds the `Human` label) with `reason` as the comment and stops.
 
 ---
 
 ## Hermes responsibilities around the call
 
-- **Wall-clock timeout** — kill the subprocess after a reasonable cap (e.g. 20 min reasoner, 60 min coder); on timeout, route the ticket to Intervention.
+- **Wall-clock timeout** — kill the subprocess after a reasonable cap (e.g. 20 min reasoner, 60 min coder); on timeout, hand the ticket off to a human (add the `Human` label with a timeout comment).
 - **One retry on overload** — `--fallback-model haiku` handles transient overload; if the subprocess returns an explicit "overload" error, retry once before bailing.
 - **Cost logging** — every invocation's `total_cost_usd` and `subtype` from the result JSON gets logged for budget tuning.
 - **Worktree lifecycle (coder mode only)** — `git worktree add` before, `git worktree remove` after success or failure. The subprocess does not manage the worktree.

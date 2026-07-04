@@ -1,6 +1,6 @@
 ---
 name: poller
-description: The cron's per-tick logic. Every 5 minutes, picks at most ONE qualifying ticket in `Todo` (preferred) or `Backlog` from the teams listed in `../../teams.md` and fires `/worker` on it. Accepts an optional prefix-scope argument (e.g. `VER` or `VER,APPAI`) to restrict a given cron to one or a subset of those teams; no argument means all of them. No touch-time window — older tickets are eligible. Fire-and-forget — /poller exits immediately after spawning the worker, so each tick is short and the next tick can start cleanly. Intervention pings live in a separate daily cron (`/intervention-pinger`), not here.
+description: The cron's per-tick logic. Every 5 minutes, picks at most ONE qualifying ticket in `Todo` (preferred) or `Backlog` from the teams listed in `../../teams.md` and fires `/worker` on it. Accepts an optional prefix-scope argument (e.g. `VER` or `VER,APPAI`) to restrict a given cron to one or a subset of those teams; no argument means all of them. No touch-time window — older tickets are eligible. Fire-and-forget — /poller exits immediately after spawning the worker, so each tick is short and the next tick can start cleanly.
 ---
 
 # poller (Hermes-side cron entry)
@@ -8,8 +8,6 @@ description: The cron's per-tick logic. Every 5 minutes, picks at most ONE quali
 The single source of truth for "what happens each 5-minute tick". Hermes' cron fires `/poller`; `/poller` does exactly one thing per tick: pick at most one qualifying ticket and fire `/worker` on it (fire-and-forget).
 
 `/poller` is pure Hermes orchestration. No delegated subprocess. It's a Linear read pass, a filter against the run-table at `~/.hermes/run-table.json` (read-only — owned by `/worker`; see `../worker/SKILL.md` § State), and one fire-and-forget spawn of `/worker`.
-
-Intervention Discord pings are handled by a separate daily cron, `/intervention-pinger` — see `../intervention-pinger/SKILL.md`.
 
 ## 0. Resolve the scope argument
 
@@ -86,7 +84,7 @@ If Hermes wants to cap concurrent worker runs globally (rate-limit / cost-contro
 - Don't fire `/worker` on more than one ticket per tick. The user's constraint: one qualifying ticket per poll.
 - Don't wait for `/worker` to complete. The tick must be short.
 - Don't write to `~/.hermes/run-table.json`. The run-table is owned by `/worker`; `/poller` only reads it for the filter pass.
-- Don't ping anything from `/poller`. Intervention pings are handled by `/intervention-pinger` on a daily cron.
+- Don't ping anything from `/poller`. Human handoff is the `Human` label, set by `/worker`; `/poller` just skips labeled tickets.
 - Don't bypass `/worker`'s pre-checks. `/poller`'s qualification filter is the same set (minus the state-tier rule, which is poller-specific); we don't pass an "approved" flag to skip checking.
 - Don't filter by recency. There's no touch-time window — a `Todo` ticket from a month ago is just as eligible as one moved this morning. The 15-min run cooldown is what prevents the same ticket from re-triggering every tick.
 - Don't pick a tier-2 (`Backlog`) ticket while a tier-1 (`Todo`) candidate qualifies. Tier order is strict.
