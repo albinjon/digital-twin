@@ -1,6 +1,6 @@
 ---
 name: poller
-description: The cron's per-tick logic. Every 5 minutes, picks at most ONE qualifying ticket in `Todo` (preferred) or `Backlog` from the teams listed in `../../teams.md` and fires `/worker` on it. No touch-time window — older tickets are eligible. Fire-and-forget — /poller exits immediately after spawning the worker, so each tick is short and the next tick can start cleanly. Intervention pings live in a separate daily cron (`/intervention-pinger`), not here.
+description: The cron's per-tick logic. Every 5 minutes, picks at most ONE qualifying ticket in `Todo` (preferred) or `Backlog` from the teams listed in `../../teams.md` and fires `/worker` on it. Accepts an optional prefix-scope argument (e.g. `VER` or `VER,APPAI`) to restrict a given cron to one or a subset of those teams; no argument means all of them. No touch-time window — older tickets are eligible. Fire-and-forget — /poller exits immediately after spawning the worker, so each tick is short and the next tick can start cleanly. Intervention pings live in a separate daily cron (`/intervention-pinger`), not here.
 ---
 
 # poller (Hermes-side cron entry)
@@ -11,13 +11,25 @@ The single source of truth for "what happens each 5-minute tick". Hermes' cron f
 
 Intervention Discord pings are handled by a separate daily cron, `/intervention-pinger` — see `../intervention-pinger/SKILL.md`.
 
+## 0. Resolve the scope argument
+
+`/poller` accepts an **optional** prefix-scope argument via its prompt:
+
+- **No argument** (empty prompt) — serve every team listed in `../../teams.md`. This is the default and the original behavior.
+- **A single prefix** (e.g. `VER`) — serve only that team this tick.
+- **A comma-separated list** (e.g. `VER,APPAI`) — serve only that subset.
+
+The argument is a **filter, not an authorization grant**. It can only narrow the `../../teams.md` allowlist, never widen it. Parse it into an uppercase set of prefixes; intersect that set with the prefixes present in `../../teams.md`. Any argument prefix not found in `../../teams.md` is dropped silently (a scoped cron for a retired/unknown team simply does nothing). If the argument is empty, the scope set is the full `../../teams.md` list.
+
+Call the result the **scope set**. Every candidate below is filtered against it in addition to the existing prefix check — the `../../teams.md` authorization check still runs independently and is never bypassed.
+
 ## 1. Pick one qualifying ticket
 
 ### Pull candidates
 
-Hermes has the Linear org MCPs connected. Within those orgs we only act on the teams listed in `../../teams.md`. The orgs contain other teams too — those are out of scope.
+Hermes has the Linear org MCPs connected. Within those orgs we only act on the teams listed in `../../teams.md`, further narrowed to the **scope set** from step 0. The orgs contain other teams too — those are out of scope.
 
-Fetch from each connected Linear MCP: every ticket in `Todo` or `Backlog` state belonging to a team listed in `../../teams.md`. **No touch-time filter** — a ticket sitting in `Todo` for a week is just as eligible as one moved there this morning. Scope by team and state at the MCP layer when possible; whatever the MCP can't filter, drop in the qualification step below.
+Fetch from each connected Linear MCP: every ticket in `Todo` or `Backlog` state belonging to a team in the scope set. **No touch-time filter** — a ticket sitting in `Todo` for a week is just as eligible as one moved there this morning. Scope by team and state at the MCP layer when possible; whatever the MCP can't filter, drop in the qualification step below.
 
 (Other non-terminal states — `In Progress`, `Review Fixes`, etc. — are not candidates for `/poller`. Tickets reach those states from inside a `/worker` run; if a run exits early and leaves a ticket there, the next forward motion comes from a human nudge or a follow-up state move, not from `/poller`.)
 
@@ -25,7 +37,7 @@ Fetch from each connected Linear MCP: every ticket in `Todo` or `Backlog` state 
 
 A ticket qualifies if **all** are true:
 
-- **Ticket key prefix matches a row in `../../teams.md`.** Mandatory prefix check, applied regardless of which org MCP surfaced the ticket. The MCP returning a ticket is not authorization to act on it. Any other prefix → drop silently. Never inline an allowlist here; it lives in `../../teams.md` by design.
+- **Ticket key prefix matches a row in `../../teams.md` AND is in the scope set.** Mandatory prefix check, applied regardless of which org MCP surfaced the ticket. The MCP returning a ticket is not authorization to act on it. A prefix outside `../../teams.md` → drop silently (unauthorized). A prefix inside `../../teams.md` but outside this cron's scope set → drop silently (out of this cron's scope). Never inline an allowlist here; it lives in `../../teams.md` by design.
 - **State is `Todo` or `Backlog`.** Re-check after fetch; defense in depth in case the MCP's state filter is loose.
 - **No `Human` label.** Human-lane tickets are off-limits to automation.
 - **No active-run lock for `/worker` on this ticket.** A previous tick's worker is still running; let it finish. Source: `active_runs["<ticket>:worker"]` in `~/.hermes/run-table.json` (entries with `expires_at` in the past are treated as released; see worker skill § State).
@@ -70,6 +82,7 @@ If Hermes wants to cap concurrent worker runs globally (rate-limit / cost-contro
 ## Don't
 
 - **Don't fetch or spawn for tickets whose prefix isn't in `../../teams.md`.** The connected Linear org MCPs contain other teams; those are out of scope. Other team keys must never reach `/worker`.
+- **Don't let the scope argument reach a team that isn't in `../../teams.md`.** The argument only narrows the allowlist; it can never authorize a prefix `../../teams.md` doesn't already list.
 - Don't fire `/worker` on more than one ticket per tick. The user's constraint: one qualifying ticket per poll.
 - Don't wait for `/worker` to complete. The tick must be short.
 - Don't write to `~/.hermes/run-table.json`. The run-table is owned by `/worker`; `/poller` only reads it for the filter pass.
