@@ -1,6 +1,6 @@
 ---
 name: poller
-description: The cron's per-tick logic. Every 5 minutes, picks at most ONE qualifying ticket in `Todo` (preferred) or `Backlog` from teams VER/LAV/ZBS and fires `/worker` on it. No touch-time window — older tickets are eligible. Fire-and-forget — /poller exits immediately after spawning the worker, so each tick is short and the next tick can start cleanly. Intervention pings live in a separate daily cron (`/intervention-pinger`), not here.
+description: The cron's per-tick logic. Every 5 minutes, picks at most ONE qualifying ticket in `Todo` (preferred) or `Backlog` from the teams listed in `../../teams.md` and fires `/worker` on it. No touch-time window — older tickets are eligible. Fire-and-forget — /poller exits immediately after spawning the worker, so each tick is short and the next tick can start cleanly. Intervention pings live in a separate daily cron (`/intervention-pinger`), not here.
 ---
 
 # poller (Hermes-side cron entry)
@@ -15,9 +15,9 @@ Intervention Discord pings are handled by a separate daily cron, `/intervention-
 
 ### Pull candidates
 
-Hermes has three Linear org MCPs connected. Within those orgs we only act on three teams: `VER` (Verkis), `LAV` (Ledger / Lavora), and `ZBS` (ZBS-Web). The orgs contain other teams too — those are out of scope.
+Hermes has the Linear org MCPs connected. Within those orgs we only act on the teams listed in `../../teams.md`. The orgs contain other teams too — those are out of scope.
 
-Fetch from each connected Linear MCP: every ticket in `Todo` or `Backlog` state belonging to teams `VER`, `LAV`, or `ZBS`. **No touch-time filter** — a ticket sitting in `Todo` for a week is just as eligible as one moved there this morning. Scope by team and state at the MCP layer when possible; whatever the MCP can't filter, drop in the qualification step below.
+Fetch from each connected Linear MCP: every ticket in `Todo` or `Backlog` state belonging to a team listed in `../../teams.md`. **No touch-time filter** — a ticket sitting in `Todo` for a week is just as eligible as one moved there this morning. Scope by team and state at the MCP layer when possible; whatever the MCP can't filter, drop in the qualification step below.
 
 (Other non-terminal states — `In Progress`, `Review Fixes`, etc. — are not candidates for `/poller`. Tickets reach those states from inside a `/worker` run; if a run exits early and leaves a ticket there, the next forward motion comes from a human nudge or a follow-up state move, not from `/poller`.)
 
@@ -25,7 +25,7 @@ Fetch from each connected Linear MCP: every ticket in `Todo` or `Backlog` state 
 
 A ticket qualifies if **all** are true:
 
-- **Ticket key starts with `VER-`, `LAV-`, or `ZBS-`.** Mandatory prefix check, applied regardless of which org MCP surfaced the ticket. The MCP returning a ticket is not authorization to act on it. Any other prefix → drop silently. Never expand this allowlist inline; it lives in this skill text by design.
+- **Ticket key prefix matches a row in `../../teams.md`.** Mandatory prefix check, applied regardless of which org MCP surfaced the ticket. The MCP returning a ticket is not authorization to act on it. Any other prefix → drop silently. Never inline an allowlist here; it lives in `../../teams.md` by design.
 - **State is `Todo` or `Backlog`.** Re-check after fetch; defense in depth in case the MCP's state filter is loose.
 - **No `Human` label.** Human-lane tickets are off-limits to automation.
 - **No active-run lock for `/worker` on this ticket.** A previous tick's worker is still running; let it finish. Source: `active_runs["<ticket>:worker"]` in `~/.hermes/run-table.json` (entries with `expires_at` in the past are treated as released; see worker skill § State).
@@ -69,7 +69,7 @@ If Hermes wants to cap concurrent worker runs globally (rate-limit / cost-contro
 
 ## Don't
 
-- **Don't fetch or spawn for tickets outside `VER` / `LAV` / `ZBS`.** The connected Linear org MCPs contain other teams; those are out of scope. Other team keys must never reach `/worker`.
+- **Don't fetch or spawn for tickets whose prefix isn't in `../../teams.md`.** The connected Linear org MCPs contain other teams; those are out of scope. Other team keys must never reach `/worker`.
 - Don't fire `/worker` on more than one ticket per tick. The user's constraint: one qualifying ticket per poll.
 - Don't wait for `/worker` to complete. The tick must be short.
 - Don't write to `~/.hermes/run-table.json`. The run-table is owned by `/worker`; `/poller` only reads it for the filter pass.

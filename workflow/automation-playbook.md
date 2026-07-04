@@ -1,6 +1,6 @@
 # Automation playbook — overview
 
-> **Allowed Linear teams: `VER`, `LAV`, `ZBS`** (Verkis, Ledger / Lavora, ZBS-Web). Hermes has three Linear org MCPs connected, and each of those orgs contains teams *beyond* the three we want to touch — so "the MCP returned a ticket" is **not** sufficient authorization to act on it. Every skill in this playbook — `/poller`, `/worker`, `/intervention-pinger` — must drop, skip, or refuse any ticket whose key prefix is not `VER-`, `LAV-`, or `ZBS-`, regardless of which org MCP surfaced it. Each skill enforces this independently; the allowlist is duplicated by design.
+> **Allowed Linear teams are defined in [`teams.md`](teams.md)** (currently `VER`, `LAV`, `ZBS`, `APPAI`). Hermes has the Linear org MCPs connected, and each of those orgs contains teams *beyond* the ones we want to touch — so "the MCP returned a ticket" is **not** sufficient authorization to act on it. Every skill in this playbook — `/poller`, `/worker`, `/intervention-pinger` — must drop, skip, or refuse any ticket whose key prefix is not listed in `teams.md`, regardless of which org MCP surfaced it. Each skill re-checks the prefix against `teams.md` independently; the registry is the single source of the list, but enforcement is duplicated by design.
 
 The Linear-driven automation has three entry points, all packaged as skills under `skills/`:
 
@@ -20,7 +20,7 @@ The delegation contract (`delegation-contract.md`) defines the three subprocess 
 
 Every `/worker` invocation runs these on entry, regardless of caller. Any failure → exit with a one-line reason.
 
-1. **Allowed team** — ticket key starts with `VER-`, `LAV-`, or `ZBS-`. Otherwise exit silently: no Linear writes, no Discord pings, nothing.
+1. **Allowed team** — ticket key prefix matches a row in `teams.md`. Otherwise exit silently: no Linear writes, no Discord pings, nothing.
 2. **`Human` label** — ticket is in the human lane; never auto-execute.
 3. **Run cooldown** — `/worker` ran on this ticket in the last 15 min.
 4. **Active-run lock** — a `/worker` run is currently in progress on this ticket.
@@ -43,6 +43,6 @@ Every `/worker` invocation runs these on entry, regardless of caller. Any failur
 | Tester subprocess timeout          | 30 min      |
 | `/tester` per-command wall-clock   | 5 min       |
 
-Subprocess budget caps and invocation flags live in `delegation-contract.md`. Per-tick selection logic lives in `skills/poller/SKILL.md`. Per-ticket loop logic and action handlers live in `skills/worker/SKILL.md`. Daily Intervention pings live in `skills/intervention-pinger/SKILL.md`.
+The served-team allowlist and per-team bindings (org MCP, target repo) live in `teams.md`. Subprocess budget caps and invocation flags live in `delegation-contract.md`. Per-tick selection logic lives in `skills/poller/SKILL.md`. Per-ticket loop logic and action handlers live in `skills/worker/SKILL.md`. Daily Intervention pings live in `skills/intervention-pinger/SKILL.md`.
 
 Durable state for cooldowns, active-run locks, and run history lives at `~/.hermes/run-table.json`, owned by `/worker`. `/poller` reads it for its filter pass; `/intervention-pinger` doesn't touch it. See `skills/worker/SKILL.md` § State for the canonical schema and read-modify-write protocol.

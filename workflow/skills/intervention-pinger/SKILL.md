@@ -11,10 +11,10 @@ There is no on-disk state. The cron schedule is the dedupe: one fire per day = a
 
 ## Body
 
-Hermes has three Linear org MCPs connected. Within those orgs we only act on three teams: `VER` (Verkis), `LAV` (Ledger / Lavora), and `ZBS` (ZBS-Web). The orgs contain other teams — those are out of scope and must never be pinged.
+Hermes has the Linear org MCPs connected. Within those orgs we only act on the teams listed in `../../teams.md`. The orgs contain other teams — those are out of scope and must never be pinged.
 
-1. For each connected Linear MCP, fetch tickets currently in `Intervention` state belonging to teams `VER`, `LAV`, or `ZBS`. Scope by team at the MCP layer when possible.
-2. Re-check each result's key prefix: skip any ticket whose key doesn't start with `VER-`, `LAV-`, or `ZBS-`. The MCP returning a ticket is not authorization to ping it.
+1. For each connected Linear MCP, fetch tickets currently in `Intervention` state belonging to a team listed in `../../teams.md`. Scope by team at the MCP layer when possible.
+2. Re-check each result's key prefix: skip any ticket whose prefix isn't in `../../teams.md`. The MCP returning a ticket is not authorization to ping it.
 3. For each surviving ticket, send a Discord message to the user with:
    - ticket key + title
    - a one-line summary of what's blocked (pulled from the most recent automation-authored comment, typically `## Open questions` or an intervention reason)
@@ -29,7 +29,7 @@ Hermes' cron infrastructure ensures only one `/intervention-pinger` instance run
 
 ## Don't
 
-- **Don't ping tickets outside `VER` / `LAV` / `ZBS`.** The three connected Linear org MCPs contain other teams; a Discord ping on a foreign team's ticket would surface work the user has no intent to touch from this Hermes instance.
+- **Don't ping tickets whose prefix isn't in `../../teams.md`.** The connected Linear org MCPs contain other teams; a Discord ping on a foreign team's ticket would surface work the user has no intent to touch from this Hermes instance.
 - Don't filter by ticket recency. Every Intervention ticket (in the allowed teams) gets pinged on every fire.
 - Don't deduplicate within a run. If the same ticket appears twice in the fetch, that's a Linear-side anomaly; ping both.
 - Don't read or write any state file. The daily cron schedule is the only dedupe mechanism.

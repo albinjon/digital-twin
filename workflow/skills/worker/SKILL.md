@@ -20,7 +20,7 @@ Argument: a single Linear ticket key (e.g. `TEAM-123`). Pre-checks run on entry 
 
 Before entering the loop:
 
-- **Allowed-team check.** The ticket key MUST start with one of `VER-`, `LAV-`, or `ZBS-` (Verkis, Ledger / Lavora, ZBS-Web). Any other prefix → exit immediately with `"skipped: ticket <key> is outside allowed teams (VER/LAV/ZBS)"`. No Linear writes, no Discord pings, no comments, nothing. Hermes has three Linear org MCPs connected, and those orgs contain teams beyond VER/LAV/ZBS — so reaching a ticket via an MCP query is **not** authorization to act on it. The prefix check is the only authority. Never expand the allowlist inline — it lives in this skill text by design.
+- **Allowed-team check.** The ticket key's prefix MUST match a row in `../../teams.md`. Any other prefix → exit immediately with `"skipped: ticket <key> is outside allowed teams (see teams.md)"`. No Linear writes, no Discord pings, no comments, nothing. Hermes has the Linear org MCPs connected, and those orgs contain teams beyond the served ones — so reaching a ticket via an MCP query is **not** authorization to act on it. The prefix check is the only authority. Never inline the allowlist here — it lives in `../../teams.md` by design.
 - Validate the ticket key exists in Linear. If not, exit with `"ticket <key> not found"`.
 - Run universal pre-checks against `~/.hermes/run-table.json` (see § State). Any failure → exit with a one-line reason (`"skipped: Human label is set"`, `"skipped: cooldown active, X minutes remaining"`, `"skipped: another /worker run is in progress"`).
 - Acquire the active-run lock for `(ticket, "worker")` — write `active_runs["<ticket>:worker"] = { started_at: now(), expires_at: now() + 6h }` under the locked read-modify-write protocol in § State. Release on every exit path below.
@@ -112,7 +112,7 @@ Args: `{ body: string }`.
 
 ### `start_implementation`
 Args: `{ branch_name: string, task_spec: string }`.
-- Determine the target repo from the ticket (Hermes' configured mapping; if none, error out).
+- Determine the target repo from the ticket's team row in `../../teams.md` (the `Target GitHub repo` column); if the team has no repo configured, error out.
 - `git -C <repo> fetch origin main && git -C <repo> worktree add <wt> -b <branch_name> origin/main`.
 - Invoke claude-code in **coder mode** with `./delegated-code.md` and `{ mode: "implement", ticket, branch_name, worktree, task_spec, repo_root }`.
 - On `{ commit_sha, summary, pr_description, blocked: false }`:
@@ -244,7 +244,7 @@ Coalesce mutations: all three exit-path writes (active-lock release, runs append
 
 ## Don't
 
-- **Don't touch tickets outside `VER-` / `LAV-` / `ZBS-`.** The three connected Linear org MCPs contain teams beyond Verkis / Ledger-Lavora / ZBS-Web; the MCP surfacing a ticket does not authorize action on it. The allowed-team check in § Entry blocks this; do not bypass it, do not "just take a look," do not comment on the foreign ticket to explain the skip. Exit silently.
+- **Don't touch tickets whose prefix isn't in `../../teams.md`.** The connected Linear org MCPs contain teams beyond the served ones; the MCP surfacing a ticket does not authorize action on it. The allowed-team check in § Entry blocks this; do not bypass it, do not "just take a look," do not comment on the foreign ticket to explain the skip. Exit silently.
 - **Don't decide.** Your job is read state → bundle → invoke the decide subprocess → apply the result. If something feels like a decision — "should I refine this?", "is this implementable?", "are these review concerns substantive?", "is this ticket trivial enough to skip the subprocess?" — that's the subprocess's job. The rubric lives in `./delegated-decide.md`.
 - **Don't read source files in the target repo.** Opening a source file is reasoning, which is deciding, which is out of role. The subprocess reads source files itself via `--allowedTools Read` when its decision needs them.
 - Don't implement anything directly. You are the orchestrator. Creating branches, pushing code, and all GitHub/Linear mutations must flow through the loop's `apply()` handlers. If the ticket looks trivial, that's irrelevant — trivial tickets go through the loop too.

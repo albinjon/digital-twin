@@ -26,8 +26,8 @@ Symlinks every skill in $SKILLS_SRC/* into:
   - \$CLAUDE_SKILLS_DIR  (default: \$HOME/.claude/skills)
   - \$HERMES_SKILLS_DIR  (default: \$HOME/.hermes/skills)
 
-Also symlinks delegation-contract.md and automation-playbook.md into both
-locations so they travel with the skills.
+Also symlinks delegation-contract.md, automation-playbook.md, and teams.md into
+both locations so they travel with the skills.
 
 Flags:
   --dry-run   Print actions without changing anything.
@@ -107,7 +107,7 @@ for skill_path in "$SKILLS_SRC"/*/; do
 done
 
 # Shared docs
-for doc in delegation-contract.md automation-playbook.md; do
+for doc in delegation-contract.md automation-playbook.md teams.md; do
   src="$WORKFLOW_DIR/$doc"
   install_link "$src" "$CLAUDE_SKILLS_DIR/$doc"
   install_link "$src" "$HERMES_SKILLS_DIR/$doc"
