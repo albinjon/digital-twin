@@ -20,7 +20,7 @@ Argument: a single Linear ticket key (e.g. `TEAM-123`). Pre-checks run on entry 
 
 Before entering the loop:
 
-- **Allowed-team check.** The ticket key's prefix MUST match a row in `../../teams.md`. Any other prefix → exit immediately with `"skipped: ticket <key> is outside allowed teams (see teams.md)"`. No Linear writes, no Discord pings, no comments, nothing. Hermes has the Linear org MCPs connected, and those orgs contain teams beyond the served ones — so reaching a ticket via an MCP query is **not** authorization to act on it. The prefix check is the only authority. Never inline the allowlist here — it lives in `../../teams.md` by design.
+- **Allowed-team check.** The ticket key's prefix MUST match a row in `../../teams.md`. Any other prefix → exit immediately with `"skipped: ticket <key> is outside allowed teams (see teams.md)"`. No Linear writes, no Discord pings, no comments, nothing. Hermes has the Linear org MCPs connected, and those orgs contain teams beyond the served ones — so reaching a ticket via an MCP query is **not** authorization to act on it. The prefix check is the only authority. Never inline the allowlist here — it lives in `../../teams.md` by design. The team mapping in `../../teams.md` is the single source of truth for repo selection; never pick a repo by filesystem discovery or by inferring from source paths.
 - Validate the ticket key exists in Linear. If not, exit with `"ticket <key> not found"`.
 - Run universal pre-checks against `~/.hermes/run-table.json` (see § State). Any failure → exit with a one-line reason (`"skipped: Human label is set"`, `"skipped: cooldown active, X minutes remaining"`, `"skipped: another /worker run is in progress"`).
 - Acquire the active-run lock for `(ticket, "worker")` — write `active_runs["<ticket>:worker"] = { started_at: now(), expires_at: now() + 6h }` under the locked read-modify-write protocol in § State. Release on every exit path below.
@@ -87,6 +87,8 @@ The bundle sent to the decide subprocess each iteration:
 ## 3. Action handlers (`apply()`)
 
 Hermes implements one handler per action `kind`. Each handler returns a `result` that goes into `action_log` for the next iteration's bundle.
+
+**Block on delegated subprocess invocations — never background-and-stop.** The coder/tester/reasoner subprocesses invoked below can run up to 60/30/20 minutes respectively (see § Safety nets), which exceeds the single foreground `terminal()` command cap (600s). That means they must be launched via `terminal(background=True)` — but you MUST then block on the result with repeated `process(action="wait", timeout=...)` calls (looping across multiple `wait` calls if needed) **until the subprocess actually completes, within this same run**, before doing anything else. Do NOT background the invocation, report a "still running, will resume when notified" status, and end your turn. A one-shot `/worker` cron run (`repeat=1`) gets exactly one turn — once that turn ends, there is no second turn for the job to resume into. `notify_on_complete` fires into a session that has already exited; the finished result (commit, PR description, test output) is stranded with nobody to push the branch, open the PR, or continue the loop. If this happens anyway, the recovery is manual: read the subprocess's result file, verify the worktree/commit are still intact, then perform the remaining `apply()` steps (push, PR, Linear link, worktree cleanup) and the § Exit run-table writes by hand.
 
 ### `refine_description`
 Args: `{ description_update?: string, labels?: string[], comment?: string }`.
@@ -168,10 +170,11 @@ On every exit path, perform all three mutations to `~/.hermes/run-table.json` in
 
 ## Safety nets
 
-- `MAX_ITER` default: **20** actions per run. On hit: Hermes force-adds the `Human` label + posts a comment.
+- `MAX_ITER` default: **40** actions per run. On hit: Hermes force-adds the `Human` label + posts a comment.
 - Run cooldown: 15 min between worker runs for the same ticket.
 - Active-run lock: prevents double-entry. TTL of 6h, refreshed at the top of each loop iteration; expired entries are treated as released (see § State).
 - Per-subprocess timeouts: 20 min reasoner, 60 min coder, 30 min tester (see `../../delegation-contract.md`). On timeout, Hermes treats it as `request_human` with a timeout comment.
+- Delegated reasoner max_iterations: **100**.
 
 ## Failure handling
 

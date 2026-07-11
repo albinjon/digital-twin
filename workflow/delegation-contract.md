@@ -12,7 +12,6 @@ Used by `refine`, `review`, `router`, and the grouping phase of `fixer`. Read-on
 
 ```
 claude -p "$INPUT" \
-  --bare \
   --model opus --effort high \
   --output-format json --json-schema "$SCHEMA" \
   --allowedTools Read \
@@ -23,7 +22,7 @@ claude -p "$INPUT" \
 
 - `$INPUT` is the bundled JSON the orchestrator built (the full ticket payload, sibling tickets, PR diff, threads — whatever the skill needs).
 - `$SCHEMA` is the skill-specific JSON schema declared in the skill's `delegated.md`.
-- `--bare` skips hook/plugin/MCP discovery and CLAUDE.md loading for fast, predictable startup. Requires `ANTHROPIC_API_KEY`.
+- **No `--bare` in this environment.** `--bare` forces `ANTHROPIC_API_KEY`-or-`apiKeyHelper` auth and explicitly never reads OAuth/keychain credentials. This host only has OAuth creds (`~/.claude/.credentials.json`), no `ANTHROPIC_API_KEY` — confirmed failing with `"Not logged in · Please run /login"` (first seen on LAV-369, reconfirmed on APPAI-143). Omit `--bare` entirely; plain `claude -p` reads OAuth fine. If a future host provisions `ANTHROPIC_API_KEY`, `--bare` can be reintroduced there for faster/more predictable startup — verify with a one-line `claude -p "OK" --bare --model haiku --output-format json --max-turns 3` smoke test before relying on it.
 - `--allowedTools Read` lets the subprocess open repo files for grounding, but blocks Edit/Write/Bash.
 - Dual ceiling: `--max-budget-usd 10` caps spend, `--max-turns 100` caps iteration count.
 
@@ -58,7 +57,6 @@ Used by `tester`. Like coder mode but the subprocess can read and shell out, not
 
 ```
 claude -p "$TASK_SPEC" \
-  --bare \
   --model opus --effort high \
   --output-format json --json-schema "$SCHEMA" \
   --permission-mode auto \
@@ -69,6 +67,7 @@ claude -p "$TASK_SPEC" \
 ```
 
 - `$WORKTREE` is the worktree Hermes prepared on the PR head.
+- No `--bare` — see Mode 1 note above; this host has OAuth creds only.
 - `Read,Bash` lets the subprocess inspect the repo and run the test suite, but blocks Edit/Write.
 - Budget cap matches coder mode — test suites can be slow.
 - No `--max-turns`.
