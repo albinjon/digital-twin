@@ -47,7 +47,7 @@ def status_entries(worktree: Path) -> list[dict[str, str]]:
             continue
         code = item[:2]
         path = item[3:]
-        if code == "R" or code == "C":
+        if code[0] in {"R", "C"}:
             if i < len(fields):
                 path = fields[i]
                 i += 1
@@ -57,6 +57,23 @@ def status_entries(worktree: Path) -> list[dict[str, str]]:
 
 def changed_paths(worktree: Path) -> list[str]:
     return [entry["path"] for entry in status_entries(worktree)]
+
+
+def _untracked_patch(worktree: Path, paths: list[str]) -> str:
+    chunks: list[str] = []
+    for path in paths:
+        absolute = worktree / path
+        if absolute.is_file() and not run_git(worktree, ["ls-files", "--error-unmatch", "--", path], check=False).strip():
+            proc = subprocess.run(
+                ["git", "-C", str(worktree), "diff", "--no-index", "--binary", "/dev/null", str(absolute)],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False,
+            )
+            chunks.append(proc.stdout)
+    return "".join(chunks)
+
+
+def combined_diff(worktree: Path, paths: list[str]) -> str:
+    return run_git(worktree, ["diff", "HEAD", "--binary"]) + _untracked_patch(worktree, paths)
 
 
 def inspect_worktree(worktree: Path, expected_branch: str | None = None) -> dict[str, Any]:
@@ -72,7 +89,7 @@ def inspect_worktree(worktree: Path, expected_branch: str | None = None) -> dict
         raise GateError(f"expected branch {expected_branch!r}, found {branch!r}")
 
     paths = changed_paths(worktree)
-    diff = run_git(worktree, ["diff", "--binary"])
+    diff = combined_diff(worktree, paths)
     cached_diff = run_git(worktree, ["diff", "--cached", "--binary"])
     if not paths and not cached_diff:
         raise GateError("empty changeset")

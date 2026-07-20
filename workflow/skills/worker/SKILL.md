@@ -26,8 +26,8 @@ Before entering the loop:
 
 - **Allowed-team check.** The ticket key's prefix MUST match a row in `../../teams.md`. Any other prefix → exit immediately with `"skipped: ticket <key> is outside allowed teams (see teams.md)"`. No Linear writes, no Discord pings, no comments, nothing. Hermes has the Linear org MCPs connected, and those orgs contain teams beyond the served ones — so reaching a ticket via an MCP query is **not** authorization to act on it. The prefix check is the only authority. Never inline the allowlist here — it lives in `../../teams.md` by design. The team mapping in `../../teams.md` is the single source of truth for repo selection; never pick a repo by filesystem discovery or by inferring from source paths.
 - Validate the ticket key exists in Linear. If not, exit with `"ticket <key> not found"`.
-- Run universal pre-checks against `~/.hermes/run-table.json` (see § State). Any failure → exit with a one-line reason (`"skipped: Human label is set"`, `"skipped: cooldown active, X minutes remaining"`, `"skipped: another /worker run is in progress"`).
-- Acquire the active-run lock for `(ticket, "worker")` — write `active_runs["<ticket>:worker"] = { started_at: now(), expires_at: now() + 6h }` under the locked read-modify-write protocol in § State. Release on every exit path below.
+- Run universal pre-checks against `~/.hermes/worker-state.db` (see § State). Any failure → exit with a one-line reason (`"skipped: Human label is set"`, `"skipped: cooldown active, X minutes remaining"`, `"skipped: another /worker run is in progress"`).
+- Acquire the active-run lock for `(ticket, "worker")` with `scripts/acquire_lock.py`; retain the returned `OWNER_TOKEN` for refresh and release. Release on every exit path below.
 - Initialize per-run state:
   - `action_log = []` — every action emitted this run + result + cost
   - `iteration = 0`
@@ -167,16 +167,17 @@ Args: `{ reason: string }`.
 
 ## 4. Exit
 
-On every exit path, perform all three mutations to `~/.hermes/run-table.json` inside a single locked read-modify-write (see § State):
-1. Release the active-run lock — delete `active_runs["<ticket>:worker"]`.
-2. Append a record to `runs[]`: `{ ticket, started_at, ended_at: now(), exit_reason, action_log, total_cost_usd }`. Trim oldest entries if `runs.length > 500`.
-3. Set `cooldowns[<ticket>] = now()` — pre-check blocks re-entry for 15 min.
+On every exit path, invoke `scripts/release_run.py` with the ticket, exit reason, role, action-log path, total cost, and the acquired owner token. The helper performs one SQLite transaction that:
+1. Releases the active-run lock.
+2. Persists the run and normalized action rows.
+3. Sets the 15-minute cooldown.
+4. Trims run history beyond the retention limit.
 
 ## Safety nets
 
 - `MAX_ITER` default: **40** actions per run. On hit: Hermes force-adds the `Human` label + posts a comment.
 - Run cooldown: 15 min between worker runs for the same ticket.
-- Active-run lock: prevents double-entry. TTL of 6h, refreshed at the top of each loop iteration; expired entries are treated as released (see § State).
+- Active-run lock: prevents double-entry. Each lock has an owner token; refresh with `scripts/refresh_lock.py <ticket> <owner-token>` at the top of every loop iteration or before the six-hour TTL. Refresh and release are conditional on that token, so an expired worker cannot release a replacement lock.
 - Per-subprocess timeouts: 20 min reasoner, 60 min coder, 30 min tester (see `../../delegation-contract.md`). On timeout, Hermes treats it as `request_human` with a timeout comment.
 - Delegated reasoner max_iterations: **100**.
 
@@ -188,58 +189,22 @@ On every exit path, perform all three mutations to `~/.hermes/run-table.json` in
 
 ## State
 
-`/worker` owns one canonical state file. Both `/worker` and `/poller` operate over fresh Claude Code sessions each invocation — the run-table is the only continuity between them. Pin both the path and the protocol.
+`/worker` and `/poller` share one canonical SQLite database across fresh sessions.
 
-**File**: `~/.hermes/run-table.json`
-**Lockfile**: `~/.hermes/run-table.lock` (for `flock`)
+**Database**: `~/.hermes/worker-state.db`
+**Schema/helpers**: `./scripts/worker_state.py`, `./scripts/acquire_lock.py`, `./scripts/refresh_lock.py`, `./scripts/release_run.py`, `./scripts/migrate_legacy_state.py`, and `./scripts/review_state.py`
 
-If the file is missing, empty, or fails to parse, treat the loaded state as `{}` (and log once — don't error out). The first write creates it.
+The database uses SQLite WAL mode, foreign keys, a 10-second busy timeout, and `BEGIN IMMEDIATE` transactions for lock/cooldown/run/review mutations. The `(ticket, role)` primary key prevents duplicate active runs; expired entries are passively reclaimed, but only the owner token can refresh or release a lock. All timestamps are ISO-8601 UTC strings.
 
-### Schema
+The database contains:
 
-```json
-{
-  "cooldowns": {
-    "TEAM-123": "2026-05-20T22:01:00Z"
-  },
-  "active_runs": {
-    "TEAM-123:worker": {
-      "started_at": "2026-05-20T22:00:00Z",
-      "expires_at": "2026-05-21T04:00:00Z"
-    }
-  },
-  "runs": [
-    {
-      "ticket": "TEAM-123",
-      "started_at": "2026-05-20T22:00:00Z",
-      "ended_at": "2026-05-20T22:01:13Z",
-      "exit_reason": "stop:done",
-      "action_log": [],
-      "total_cost_usd": 0.42
-    }
-  ]
-}
-```
+- `worker_locks` — current `(ticket, role)` locks with a six-hour expiry.
+- `cooldowns` — last exit per ticket; default cooldown is 15 minutes.
+- `runs` and `actions` — bounded run history plus queryable normalized action results.
+- `review_targets` — one stable row per `(repo, pull request)` with current/last-reviewed SHA and compact review counts.
+- `review_findings` — optional unresolved finding/thread metadata; full prose remains on GitHub.
 
-- `cooldowns[<ticket>]` — ISO-8601 UTC timestamp of the last `/worker` exit on that ticket. The 15-min cooldown pre-check reads this; the exit path writes it.
-- `active_runs["<ticket>:<role>"]` — current in-flight run for that (ticket, role) pair. `expires_at = started_at + 6h` on initial acquire; refreshed to `now() + 6h` at the top of each loop iteration so a live worker never trips its own TTL. Entries with `expires_at` in the past are treated as **released** (passive stale-lock recovery — no explicit janitor needed). The active-run pre-check reads this; entry/exit/refresh writes it.
-- `runs` — append-only run history. On exit, append one record. Trim from the front once length exceeds 500 to keep the file size bounded.
-
-All timestamps are ISO-8601 with `Z` suffix (UTC).
-
-### Read-modify-write protocol
-
-Every write to `run-table.json` MUST follow this sequence:
-
-1. `flock -x ~/.hermes/run-table.lock` with a 10-second timeout. If the lock can't be acquired, abort the write and log; do not proceed without the lock.
-2. Read `run-table.json`. Missing/empty/corrupt → `{}` (log once).
-3. Mutate the in-memory dict.
-4. Write to `run-table.json.tmp`, then `mv` (atomic POSIX rename) to `run-table.json`.
-5. Release the lock.
-
-Pure reads (the poller's filter pass; this skill's pre-checks) use a shared lock (`flock -s`) and follow the same load-then-decide pattern. The shared lock blocks while a writer holds the exclusive lock; that's intentional — readers must not see a half-written file.
-
-Coalesce mutations: all three exit-path writes (active-lock release, runs append, cooldown set) happen inside a single locked sequence, not three separate ones.
+Do not hand-roll state mutations or recreate the old JSON protocol inline. Call the checked-in helper scripts. Do not store full review payloads in the worker database: use GitHub for the full review and SQLite for filtering/deduplication metadata.
 
 ## Don't
 

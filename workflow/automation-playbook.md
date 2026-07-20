@@ -4,9 +4,9 @@
 
 The Linear-driven automation has two entry points, both packaged as skills under `skills/`:
 
-- **`/poller`** — Hermes' cron fires this every 5 minutes. It picks at most one qualifying ticket in `Todo` (preferred) or `Backlog` and spawns `/worker` on it (fire-and-forget). Older tickets are eligible; there's no touch-time window. See `skills/poller/SKILL.md`.
+- **`/poller`** — Hermes' cron invokes this according to each job's configured interval. It picks at most one qualifying ticket in `Todo` and spawns `/worker` on it (fire-and-forget). Older tickets are eligible; there's no touch-time window. See `skills/poller/SKILL.md`.
 
-- **`/worker`** — drives one ticket through its full lifecycle in a single autonomous run. Reads ticket + PR state, asks a reasoner subprocess for one structured action at a time, applies it via Hermes' integrations (Linear / GitHub / Discord / git), loops. Heavy actions (`start_implementation`, `apply_fixes`, `run_tests`) spawn `claude-code` subprocesses in coder/tester mode. Terminates on `request_human`, terminal Linear state, or a 20-action max-iter cap. See `skills/worker/SKILL.md`.
+- **`/worker`** — drives one ticket through its full lifecycle in a single autonomous run. Reads ticket + PR state, asks a reasoner subprocess for one structured action at a time, applies it via Hermes' integrations (Linear / GitHub / Discord / git), loops. Heavy actions (`start_implementation`, `apply_fixes`, `run_tests`) spawn `claude-code` subprocesses in coder/tester mode. Terminates on `request_human`, terminal Linear state, or a 40-action max-iter cap. See `skills/worker/SKILL.md`.
 
 When a ticket needs a person — a decision, a review, or it's otherwise stuck — `/worker` adds the `Human` label and leaves the loop. That label is the single human-handoff signal; there is no separate Linear state for it. `/poller` skips labeled tickets, so a human-flagged ticket stays out of automation until someone clears the label. (Getting *notified* that a label was set is handled out-of-band, not by these skills.)
 
@@ -25,7 +25,7 @@ Every `/worker` invocation runs these on entry, regardless of caller. Any failur
 3. **Run cooldown** — `/worker` ran on this ticket in the last 15 min.
 4. **Active-run lock** — a `/worker` run is currently in progress on this ticket.
 
-`/poller` applies the same filter when selecting a candidate, plus a stricter state rule: it only considers tickets in `Todo` or `Backlog`, with `Todo` taking priority and `created_at` descending as the within-tier tiebreaker (newest first). Tickets in `In Progress`, `Review Fixes`, or any other state are not picked by `/poller` — they're either inside a live `/worker` run or waiting for human nudge. Tickets a human needs to handle carry the `Human` label and are skipped by pre-check 2 above.
+The poller candidate states are `Todo` only. Tickets in `Backlog`, `In Progress`, `Review Fixes`, or any other state are not picked by `/poller`.
 
 ---
 
@@ -33,10 +33,10 @@ Every `/worker` invocation runs these on entry, regardless of caller. Any failur
 
 | Lever                              | Default     |
 | ---------------------------------- | ----------- |
-| Cron interval                      | 5 min       |
-| Poller candidate states            | `Todo` (tier 1) → `Backlog` (tier 2); LIFO by `created_at` within a tier (newest first) |
+| Cron interval                      | Configured per cron job (currently ZBS 30 min; APPAI 60 min) |
+| Poller candidate states            | `Todo` only; LIFO by `created_at` (newest first) |
 | Run cooldown per ticket            | 15 min      |
-| Max actions per `/worker` run      | 20          |
+| Max actions per `/worker` run      | 40          |
 | Reasoner subprocess timeout        | 20 min      |
 | Coder subprocess timeout           | 60 min      |
 | Tester subprocess timeout          | 30 min      |
@@ -44,4 +44,4 @@ Every `/worker` invocation runs these on entry, regardless of caller. Any failur
 
 The served-team allowlist and per-team bindings (org MCP, target repo) live in `teams.md`. Subprocess budget caps and invocation flags live in `delegation-contract.md`. Per-tick selection logic lives in `skills/poller/SKILL.md`. Per-ticket loop logic and action handlers live in `skills/worker/SKILL.md`.
 
-Durable state for cooldowns, active-run locks, and run history lives at `~/.hermes/run-table.json`, owned by `/worker`. `/poller` reads it for its filter pass. See `skills/worker/SKILL.md` § State for the canonical schema and read-modify-write protocol.
+Durable state for cooldowns, active-run locks, review targets, findings, and run history lives at `~/.hermes/worker-state.db`, owned by `/worker`. `/poller` reads it for its filter pass. Lock ownership tokens are required for refresh/release, preventing an expired worker from deleting a replacement lock. See `skills/worker/SKILL.md` § State.

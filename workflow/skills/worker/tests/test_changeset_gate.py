@@ -7,7 +7,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
-from changeset_gate import GateError, commit_changes, inspect_worktree  # noqa: E402
+from changeset_gate import GateError, commit_changes, inspect_worktree, save_recovery_patch  # noqa: E402
 
 
 def git(repo: Path, *args: str) -> str:
@@ -49,6 +49,30 @@ class ChangesetGateTests(unittest.TestCase):
             self.assertEqual(result["branch"], "main")
             self.assertEqual(result["changed_files"], ["README.md"])
             self.assertEqual(result["diff_check"], "passed")
+
+    def test_inspect_includes_staged_and_untracked_changes(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            repo = make_repo(Path(directory))
+            (repo / "README.md").write_text("staged\n")
+            subprocess.check_call(["git", "-C", str(repo), "add", "README.md"])
+            (repo / "new.txt").write_text("new file\n")
+            result = inspect_worktree(repo)
+            self.assertEqual(set(result["changed_files"]), {"README.md", "new.txt"})
+            self.assertIn("staged", result["diff"])
+            self.assertIn("new file", result["diff"])
+
+    def test_recovery_patch_includes_untracked_file(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            repo = make_repo(Path(directory))
+            (repo / "new.txt").write_text("recover me\n")
+            output = Path(directory) / "recovery.patch"
+            result = save_recovery_patch(repo, output)
+            self.assertEqual(result["status"], "preserved")
+            self.assertIn("recover me", output.read_text())
 
     def test_commit_stages_only_inspected_paths(self) -> None:
         from tempfile import TemporaryDirectory
