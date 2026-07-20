@@ -9,8 +9,10 @@ no skill prose changes.
 | ------- | --------------- | --------------- | ------------------------------- | -------- |
 | `VER`   | Verkis          | `linear-skry`   | `skry-ab/verkis`                | dev      |
 | `LAV`   | Ledger / Lavora | `linear-lavora` | `Lavora-AB/Ledger`              | dev      |
-| `ZBS`   | ZBS-Web         | `linear-zbs`    | `Zenbuddhistiska-Samfundet/web` | dev      |
+| `ZBS`   | ZBS             | `linear-zbs`    | `Zenbuddhistiska-Samfundet/web` | dev      |
 | `APPAI` | Appraisal       | `linear-skry`   | `skry-ab/appraisal`             | dev      |
+
+For ZBS specifically, the exact Linear team identifier is `ZBS` (not `ZBS-Web`). Its GitHub repository is [`Zenbuddhistiska-Samfundet/web`](https://github.com/Zenbuddhistiska-Samfundet/web).
 
 ## Rules
 
