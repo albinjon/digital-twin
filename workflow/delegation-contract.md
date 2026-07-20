@@ -12,7 +12,7 @@ Used by `refine`, `review`, `router`, and the grouping phase of `fixer`. Read-on
 
 ```
 claude -p "$INPUT" \
-  --model opus --effort high \
+  --model sonnet-5 --effort high \
   --output-format json --json-schema "$SCHEMA" \
   --allowedTools Read \
   --max-budget-usd 10 \
@@ -34,7 +34,7 @@ Used by `implement` and the fix-applying phase of `fixer`. Operates inside a Her
 
 ```
 claude -p "$TASK_SPEC" \
-  --model opus --effort high \
+  --model sonnet-5 --effort high \
   --output-format json --json-schema "$SCHEMA" \
   --permission-mode auto \
   --add-dir "$WORKTREE" \
@@ -44,10 +44,11 @@ claude -p "$TASK_SPEC" \
 ```
 
 - `$TASK_SPEC` is the bundled task description + everything the coder needs to ground its work (ticket data, fix plan, branch name, etc.).
-- `$WORKTREE` is an absolute path to a worktree Hermes prepared (already checked out on the right branch). The subprocess does all file edits and commits inside this worktree.
+- `$WORKTREE` is an absolute path to a worktree Hermes prepared (already checked out on the right branch). The subprocess edits files and may run tests, but it does not stage, commit, push, or create PRs.
 - `--permission-mode auto` lets the auto-mode classifier handle approvals so the subprocess can shell out for tests, linters, formatters, etc.
 - No `--allowedTools` cap — coder mode needs the full default tool set.
 - Dual ceiling: `--max-budget-usd 25` caps spend, `--max-turns 100` caps iteration count.
+- A classifier or Bash failure after edits is recoverable. Return the changed files and a structured `blocked_reason`; Hermes preserves and gates the diff instead of deleting the worktree.
 
 ---
 
@@ -57,7 +58,7 @@ Used by `tester`. Like coder mode but the subprocess can read and shell out, not
 
 ```
 claude -p "$TASK_SPEC" \
-  --model opus --effort high \
+  --model sonnet-5 --effort high \
   --output-format json --json-schema "$SCHEMA" \
   --permission-mode auto \
   --allowedTools Read,Bash \
@@ -98,7 +99,7 @@ The subprocess always returns JSON. The exact schema is skill-specific (see each
 - **Wall-clock timeout** — kill the subprocess after a reasonable cap (e.g. 20 min reasoner, 60 min coder); on timeout, hand the ticket off to a human (add the `Human` label with a timeout comment).
 - **One retry on overload** — `--fallback-model haiku` handles transient overload; if the subprocess returns an explicit "overload" error, retry once before bailing.
 - **Cost logging** — every invocation's `total_cost_usd` and `subtype` from the result JSON gets logged for budget tuning.
-- **Worktree lifecycle (coder mode only)** — `git worktree add` before, `git worktree remove` after success or failure. The subprocess does not manage the worktree.
+- **Worktree lifecycle (coder mode only)** — `git worktree add` before. Hermes' changeset gate inspects, semantically validates, commits, and pushes the diff; it removes the worktree only after a successful commit/PR handoff or explicit recovery cleanup. The subprocess does not manage the worktree.
 
 ---
 

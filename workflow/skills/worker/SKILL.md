@@ -7,6 +7,10 @@ description: Drive one Linear ticket through its full lifecycle autonomously. A 
 
 Worker reads ticket + PR state, asks a delegated reasoner subprocess for one next action (with full action history each call), applies it, and loops.
 
+## Delegated Claude Code model
+
+All worker subprocesses (reasoner, coder, and tester) follow `../../delegation-contract.md`, which pins the Claude Code model to `sonnet-5`. Do not add a per-action model override in this skill; update the shared contract if the default changes.
+
 ## Invocation
 
 Two entry paths reach the same loop:
@@ -113,23 +117,23 @@ Args: `{ body: string }`.
 Args: `{ branch_name: string, task_spec: string }`.
 - Determine the target repo from the ticket's team row in `../../teams.md` (the `Target GitHub repo` column); if the team has no repo configured, error out.
 - `git -C <repo> fetch origin main && git -C <repo> worktree add <wt> -b <branch_name> origin/main`.
-- Invoke claude-code in **coder mode** with `./delegated-code.md` and `{ mode: "implement", ticket, branch_name, worktree, task_spec, repo_root }`.
-- On `{ commit_sha, summary, pr_description, blocked: false }`:
-  - `git push -u origin <branch_name>`.
-  - Open non-draft PR via GitHub: title = ticket title, body = `pr_description` (Hermes prepends Linear ticket link).
+- Invoke claude-code in **coder mode** with `./delegated-code.md` and `{ mode: "implement", ticket, branch_name, worktree, task_spec, repo_root }`. The coder edits and tests only; it must not commit, push, or create a PR.
+- Run the changeset gate from `./scripts/changeset_gate.py` in the prepared worktree. The gate performs deterministic worktree validation, captures the diff, invokes a read-only semantic reviewer with the issue payload, generates the PR title/body, and commits/pushes only when the reviewer returns `verdict: ready`.
+- On gate `{ status: "committed", commit: { commit_sha, ... }, review: { pr_title, pr_description } }`:
+  - Open non-draft PR via GitHub MCP: title = `review.pr_title`, body = `review.pr_description` (Hermes prepends the Linear ticket link).
   - Link PR to Linear ticket (verify via integration; otherwise comment with PR URL).
   - `git worktree remove <wt>`.
-  - Result: `{ ok: true, commit_sha, pr_url, summary }`.
-- On `{ blocked: true, blocked_reason }`: `git worktree remove --force <wt>`. Result: `{ ok: false, blocked_reason }`. (The reasoner sees this and likely emits `request_human`.)
-- On `{ error, reason }`: `git worktree remove --force <wt>`. Result: `{ ok: false, error_reason: reason }`.
+  - Result: `{ ok: true, commit_sha, pr_url, pr_title, pr_description, summary }`.
+- On gate `{ status: "needs_changes" }`: keep the worktree, return the review feedback to the reasoner, and let the next action send the feedback back to the coder. Do not commit, push, or add the Human label yet.
+- On coder `{ blocked: true }` or gate/tooling failure: first run `changeset_gate.py recover --worktree <wt> --output /tmp/<ticket>-<run-id>.patch` when the worktree has changes. Keep the worktree or recovery patch available; never force-remove useful edits before recording them. Result includes `{ ok: false, recoverable: true, blocked_reason, recovery_patch }`.
 
 ### `apply_fixes`
 Args: `{ task_spec: string, resolve_thread_ids?: string[] }`.
 - Worktree on the existing PR branch (`git worktree add <wt> origin/<branch>`).
-- Invoke claude-code in **coder mode** with `{ mode: "fix", ticket, pr, worktree, task_spec, repo_root }`.
-- On success: push commits; for each `thread_id` in `resolve_thread_ids` that the subprocess confirmed it addressed (in `addressed_thread_ids`), mark the GitHub review thread resolved with optional `"addressed in <sha>"` reply. Clean up worktree.
-- Result includes `{ commit_sha, addressed_thread_ids, summary, unaddressed_thread_ids }`.
-- On `blocked` / error: same pattern as `start_implementation`.
+- Invoke claude-code in **coder mode** with `./delegated-code.md` and `{ mode: "fix", ticket, pr, worktree, task_spec, repo_root }`. The coder edits/tests only.
+- Run the same changeset gate, passing the PR issue payload and review context. On a ready result, Hermes commits/pushes; for each `thread_id` in `resolve_thread_ids` that the reviewer/coder confirmed it addressed, mark the GitHub review thread resolved with optional `"addressed in <sha>"` reply. Clean up worktree only after successful handoff.
+- Result includes `{ commit_sha, addressed_thread_ids, summary, pr_description }`.
+- On `needs_changes`, return the exact reviewer feedback to the next coder iteration. On blocked/error, preserve the diff using the recovery path described above.
 
 ### `run_tests`
 Args: `{}` (no args needed — Hermes derives the PR head from current state).
