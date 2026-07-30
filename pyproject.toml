@@ -1,0 +1,37 @@
+[project]
+name = "digital-twin"
+version = "0.1.0"
+description = "Deterministic DBOS kernel underneath the Hermes-orchestrated coding harness"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.7,<3",
+    "pyyaml>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+digital-twin = "digital_twin.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+strict = true

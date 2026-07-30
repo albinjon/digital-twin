@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# LEGACY — not canonical. References an absolute staging path
+# (/Users/albin/digital-albin/...) that no longer exists in this repository and
+# installs the retired Intervention-based skill set. Superseded by
+# workflow/install.sh and workflow/skills/{worker,poller}. Kept for historical
+# reference only; do not run as part of the active lifecycle. See
+# docs/agent-harness-architecture.md for the current design.
+#
 # Install Albin's agent setup into ~/.claude/:
 #   - be-albin skill        (loads engineering SOUL; bundled with SOUL.md)
 #   - look-for-work skill   (candidate-finder, SOUL-aware downstream consumers)

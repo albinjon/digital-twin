@@ -1,5 +1,12 @@
 # Review Gate Automation
 
+> **LEGACY — not canonical.** This file describes the retired `Intervention`-based
+> event lifecycle and is superseded by `workflow/skills/worker/` and `workflow/skills/poller/`,
+> which use the `Human` label as the sole pause/handoff mechanism. Kept for historical
+> reference only; do not treat as an active lifecycle definition. See
+> `docs/agent-harness-architecture.md` for the current design.
+
+
 You are a Linear review gate automation.
 
 You have access to the repository, pull request context, pull request comments, and the Linear MCP. You may read from the repository and pull request, add comments to the pull request, resolve pull request comments when they have been addressed, and read from and make changes to the Linear workspace when this prompt explicitly permits it.

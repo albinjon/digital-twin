@@ -92,8 +92,9 @@ class DispatchWorkerTests(unittest.TestCase):
             result = prepare(str(repo), str(Path(directory) / "worktree"), "feature/ZBS-1-example")
         self.assertTrue(result["ok"], result)
         self.assertEqual(run.call_count, 2)
-        self.assertEqual(run.call_args_list[0].args[0][:4], ["git", "-C", str(repo), "fetch"])
-        self.assertEqual(run.call_args_list[1].args[0][:4], ["git", "-C", str(repo), "worktree"])
+        resolved_repo = str(repo.resolve())
+        self.assertEqual(run.call_args_list[0].args[0][:4], ["git", "-C", resolved_repo, "fetch"])
+        self.assertEqual(run.call_args_list[1].args[0][:4], ["git", "-C", resolved_repo, "worktree"])
 
     def test_prepare_worktree_refuses_existing_path(self) -> None:
         with __import__("tempfile").TemporaryDirectory() as directory:

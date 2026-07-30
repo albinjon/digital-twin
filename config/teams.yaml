@@ -1,0 +1,24 @@
+# Team registry — validated source of truth for the team allowlist and each
+# team's bindings. workflow/teams.md is generated from this file; do not edit
+# workflow/teams.md by hand (run `digital-twin generate-teams-doc`).
+teams:
+  VER:
+    name: Verkis
+    linear_org_mcp: linear-skry
+    github_repository: skry-ab/verkis
+    workflow: dev
+  LAV:
+    name: Ledger / Lavora
+    linear_org_mcp: linear-lavora
+    github_repository: Lavora-AB/Ledger
+    workflow: dev
+  ZBS:
+    name: ZBS
+    linear_org_mcp: linear-zbs
+    github_repository: Zenbuddhistiska-Samfundet/web
+    workflow: dev
+  APPAI:
+    name: Appraisal
+    linear_org_mcp: linear-skry
+    github_repository: skry-ab/appraisal
+    workflow: dev
