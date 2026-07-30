@@ -88,6 +88,32 @@ You have no Linear, GitHub, Discord, or repo-write access. You can read the bund
 
 `reason` is one sentence the orchestrator logs and a human reads when debugging. Be specific.
 
+### Payload validation and correction diagnostics
+
+Before applying an action, the orchestrator first normalizes the outer Claude envelope with:
+
+```bash
+python3 <worker-skill-dir>/scripts/normalize_reasoner_result.py <envelope-json>
+```
+
+It prefers `structured_output`, then accepts `result` as direct JSON or exactly one fenced JSON object. Prose, multiple objects, ambiguous extraction, and invalid nested values are failures. Preserve `source`, `subtype`, and `total_cost_usd` from the outer envelope alongside the diagnostic.
+
+The normalized action is then validated with:
+
+```bash
+python3 <worker-skill-dir>/scripts/action_payload.py <action-json>
+```
+
+The validator is fail-closed. It rejects unknown fields, missing required fields, wrong types, invalid enum values, empty required strings, and renamed aliases. A rejected payload must be recorded in `action_log` with the validator's complete JSON result. The diagnostic must preserve:
+
+- `path`: exact location, such as `args.branch_name`;
+- `code`: `required`, `type`, `enum`, or `additional_property`;
+- `message`: actionable explanation;
+- `expected`: the exact expected type, allowed values, or object structure;
+- `received` and `received_type` when a value was supplied.
+
+The worker may give the reasoner one retry with this diagnostic included in the next bundle. Never silently rename fields (`title` → `task_spec`, `question` → `comment`) or unwrap nested actions. If the retry is malformed, hand off with a comment containing the diagnostic and the expected structure.
+
 On unrecoverable failure inside this reasoner, return `{ "error": "...", "reason": "..." }` instead.
 
 ### Args shape per `kind`

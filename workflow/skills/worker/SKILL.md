@@ -22,6 +22,28 @@ Argument: a single Linear ticket key (e.g. `TEAM-123`). Pre-checks run on entry 
 
 ## 1. Entry
 
+Before the first Linear lookup, run the checked-in read-only asset preflight:
+
+```bash
+python3 <worker-skill-dir>/scripts/preflight.py --no-claude
+```
+
+After the authorized team/repository mapping is known, resolve the local repository explicitly:
+
+```bash
+python3 <worker-skill-dir>/scripts/resolve_repo.py <TEAM_PREFIX>
+```
+
+The mapping is environment-local at `~/.hermes/local-repositories.json`; it must be explicit and must not be inferred by scanning the filesystem or converting a GitHub slug into a guessed path. Pass the returned path to the full preflight with `--repo <repo>` before acquiring the owner-token lock. If either returns `ok: false`, record the complete JSON diagnostic and stop before changing Linear or GitHub. The preflight verifies workflow assets, required commands, and repository existence. Every exit after lock acquisition must finalize through `release_run.py`.
+
+Before issuing a GitHub lookup, validate its sanitized payload with:
+
+```bash
+python3 <worker-skill-dir>/scripts/github_payload.py <tool-name> <payload-json>
+```
+
+For `Not Found` or validation failures, preserve the tool name, sanitized payload, expected structure, repository mapping source, and MCP response in the action result. Do not retry an invalid payload unchanged.
+
 Before entering the loop:
 
 - **Allowed-team check.** The ticket key's prefix MUST match a row in `../../teams.md`. Any other prefix → exit immediately with `"skipped: ticket <key> is outside allowed teams (see teams.md)"`. No Linear writes, no Discord pings, no comments, nothing. Hermes has the Linear org MCPs connected, and those orgs contain teams beyond the served ones — so reaching a ticket via an MCP query is **not** authorization to act on it. The prefix check is the only authority. Never inline the allowlist here — it lives in `../../teams.md` by design. The team mapping in `../../teams.md` is the single source of truth for repo selection; never pick a repo by filesystem discovery or by inferring from source paths.
@@ -31,6 +53,7 @@ Before entering the loop:
 - Initialize per-run state:
   - `action_log = []` — every action emitted this run + result + cost
   - `iteration = 0`
+  - `malformed_action_retries = 0` — at most one correction retry for invalid reasoner payloads
 
 **Hard gate.** After pre-checks pass and state is initialized, enter step 2 immediately — no source reads, no plan-drafting, no thinking-ahead outside the loop. The loop is the only place work gets decided and dispatched.
 
@@ -50,6 +73,24 @@ while iteration < MAX_ITER:
 
   bundle = { kind: "decide", state, action_log, repo_context }
   action = invoke_claude_code(reasoner mode, "./delegated-decide.md", bundle)
+  # Validate the returned object against the exact action-specific contract
+  validation = validate_action_payload(action)
+  if not validation.ok:
+    action_log.append({
+      "action": {"kind": "payload_validation", "args": {}},
+      "result": validation.diagnostic,
+      "cost_usd": validation.cost_usd,
+    })
+    malformed_action_retries += 1
+    if malformed_action_retries > 1:
+      request_human_with_comment(
+        "The reasoner returned an invalid action payload after one correction retry. "
+        "Payload validation diagnostic:\n```json\n" + json.dumps(validation.diagnostic, indent=2) + "\n```"
+      )
+      exit("invalid-action-payload")
+    # Re-enter the decide loop once with the diagnostic. Do not guess aliases.
+    continue
+  malformed_action_retries = 0
   # action = { kind, args, reason }
 
   if action.kind == "stop":
@@ -115,8 +156,13 @@ Args: `{ body: string }`.
 
 ### `start_implementation`
 Args: `{ branch_name: string, task_spec: string }`.
-- Determine the target repo from the ticket's team row in `../../teams.md` (the `Target GitHub repo` column); if the team has no repo configured, error out.
-- `git -C <repo> fetch origin main && git -C <repo> worktree add <wt> -b <branch_name> origin/main`.
+- Determine the target repo from the ticket's team row in `../../teams.md`.
+- Prepare the worktree with the checked-in argv-based helper, not a compound shell command:
+  ```bash
+  python3 <worker-skill-dir>/scripts/prepare_worktree.py \\
+    --repo <repo> --worktree <wt> --branch <branch_name>
+  ```
+- The helper refuses to overwrite an existing path and returns JSON diagnostics. On failure, preserve the exact result in `action_log`; do not retry with `rm`, `git reset --hard`, or shell composition.
 - Invoke claude-code in **coder mode** with `./delegated-code.md` and `{ mode: "implement", ticket, branch_name, worktree, task_spec, repo_root }`. The coder edits and tests only; it must not commit, push, or create a PR.
 - Run the changeset gate from `./scripts/changeset_gate.py` in the prepared worktree. The gate performs deterministic worktree validation, captures the diff, invokes a read-only semantic reviewer with the issue payload, generates the PR title/body, and commits/pushes only when the reviewer returns `verdict: ready`.
 - On gate `{ status: "committed", commit: { commit_sha, ... }, review: { pr_title, pr_description } }`:
@@ -167,11 +213,17 @@ Args: `{ reason: string }`.
 
 ## 4. Exit
 
-On every exit path, invoke `scripts/release_run.py` with the ticket, exit reason, role, action-log path, total cost, and the acquired owner token. The helper performs one SQLite transaction that:
-1. Releases the active-run lock.
-2. Persists the run and normalized action rows.
-3. Sets the 15-minute cooldown.
-4. Trims run history beyond the retention limit.
+On every exit path, validate the action log and mechanically compute total delegated cost with:
+
+```bash
+python3 <worker-skill-dir>/scripts/finalize_run.py \\
+  --ticket <ticket> \\
+  --exit-reason <reason> \\
+  --owner-token <owner-token> \\
+  --action-log <validated-action-log.json>
+```
+
+This wrapper refuses malformed action logs, rejects non-finite/negative/non-numeric costs, sums costs from the log instead of trusting a hand-entered total, and calls the owner-token-aware `release_run.py` implementation atomically. If finalization fails, preserve the exact JSON diagnostic and do not report the worker as complete.
 
 ## Safety nets
 

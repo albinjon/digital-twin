@@ -13,7 +13,8 @@ WORKFLOW_DIR="$SCRIPT_DIR"
 SKILLS_SRC="$WORKFLOW_DIR/skills"
 
 CLAUDE_SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
-HERMES_SKILLS_DIR="${HERMES_SKILLS_DIR:-$HOME/.hermes/skills}"
+HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+HERMES_SKILLS_DIR="${HERMES_SKILLS_DIR:-$HERMES_HOME/skills}"
 
 DRY_RUN=0
 FORCE=0
@@ -111,6 +112,14 @@ for doc in delegation-contract.md automation-playbook.md teams.md; do
   src="$WORKFLOW_DIR/$doc"
   install_link "$src" "$CLAUDE_SKILLS_DIR/$doc"
   install_link "$src" "$HERMES_SKILLS_DIR/$doc"
+done
+
+# Also expose shared workflow documents at the Hermes home root. Older skill
+# loaders resolve `../../teams.md` relative to HERMES_HOME rather than the
+# individual skill directory, so both locations must point to the same source.
+for doc in delegation-contract.md automation-playbook.md teams.md; do
+  src="$WORKFLOW_DIR/$doc"
+  install_link "$src" "$HERMES_HOME/$doc"
 done
 
 echo "done."
